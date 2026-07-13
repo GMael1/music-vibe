@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Mic, Upload, Play, MonitorPlay, Square, Video } from 'lucide-react';
+import { Mic, Upload, Play, MonitorPlay, Square, Video, CheckCircle2, AlertCircle } from 'lucide-react';
 import { globalMixer } from './audio/Mixer';
 import { globalExporter } from './audio/Exporter';
 import TrackItem from './components/TrackItem';
@@ -14,27 +14,36 @@ function App() {
   const [isLiveListening, setIsLiveListening] = useState(false);
   const [liveStyle, setLiveStyle] = useState('psychedelic');
   const [isRecording, setIsRecording] = useState(false);
+  const [exportStatus, setExportStatus] = useState(null);
   
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
   const fileInputRef = useRef(null);
+  const stageRef = useRef(null);
 
   useEffect(() => {
     setDuration(globalMixer.getDuration());
   }, [tracks]);
 
   useEffect(() => {
+    if (!isPlaying) return undefined;
     let raf;
     const updateTime = () => {
-      if (isPlaying) {
-        setCurrentTime(globalMixer.getCurrentTime());
-      }
+      setCurrentTime(globalMixer.getCurrentTime());
       raf = requestAnimationFrame(updateTime);
     };
     raf = requestAnimationFrame(updateTime);
     return () => cancelAnimationFrame(raf);
   }, [isPlaying]);
+
+  useEffect(() => globalMixer.subscribe(event => {
+    if (event.type === 'ended') {
+      setIsPlaying(false);
+      setCurrentTime(event.currentTime);
+      if (globalExporter.isRecording) globalExporter.stopRecording();
+    }
+  }), []);
 
   const handleSeek = (e) => {
     const time = parseFloat(e.target.value);
@@ -52,9 +61,13 @@ function App() {
   // Stop everything when switching modes
   useEffect(() => {
     if (mode === 'live') {
-      if (isPlaying) togglePlayback();
-    } else {
-      if (isLiveListening) toggleLiveListening();
+      if (globalMixer.isPlaying) {
+        globalMixer.stopAll();
+        setIsPlaying(false);
+      }
+    } else if (globalMixer.tracks.has('live')) {
+      globalMixer.stopLiveMode();
+      setIsLiveListening(false);
     }
   }, [mode]);
 
@@ -68,11 +81,15 @@ function App() {
       const arrayBuffer = await file.arrayBuffer();
       const audioBuffer = await globalMixer.decodeAudioData(arrayBuffer);
       
+      const visualDefaults = [
+        { visualStyle: 'psychedelic', position: 'background', opacity: 1, blendMode: 'normal' },
+        { visualStyle: 'chladni', position: 'center', opacity: 0.88, blendMode: 'normal' },
+        { visualStyle: 'fireworks', position: 'center', opacity: 0.95, blendMode: 'additive' },
+      ][tracks.length % 3];
       const newTrack = {
-        id: `track-${Date.now()}`,
+        id: `track-${crypto.randomUUID?.() ?? Date.now()}`,
         name: file.name,
-        visualStyle: 'psychedelic',
-        position: 'center',
+        ...visualDefaults,
         volume: 1.0,
         reactivity: 1.0,
         hue: 0.0,
@@ -93,6 +110,11 @@ function App() {
   const removeTrack = (id) => {
     globalMixer.removeTrack(id);
     setTracks(prev => prev.filter(t => t.id !== id));
+    if (globalMixer.getDuration() === 0) {
+      globalMixer.stopAll();
+      setIsPlaying(false);
+      setCurrentTime(0);
+    }
   };
 
   const updateTrack = (id, updates) => {
@@ -131,13 +153,46 @@ function App() {
       globalExporter.stopRecording();
       setIsRecording(false);
     } else {
-      const canvas = document.querySelector('canvas');
-      if (canvas) {
-        globalExporter.startRecording(canvas);
+      const canvas = stageRef.current?.canvas;
+      if (!canvas) return;
+
+      const resolution = format === 'vertical'
+        ? { width: 1080, height: 1920 }
+        : { width: 1920, height: 1080 };
+
+      try {
+        setExportStatus(null);
+        stageRef.current.setExportResolution(resolution.width, resolution.height);
+        globalExporter.startRecording(canvas, {
+          frameRate: 60,
+          videoBitsPerSecond: 14_000_000,
+          onComplete: () => {
+            stageRef.current?.restorePreviewResolution();
+            setIsRecording(false);
+            setExportStatus({ type: 'success', message: '1080p video exported' });
+          },
+          onError: (error) => {
+            stageRef.current?.restorePreviewResolution();
+            setIsRecording(false);
+            setExportStatus({ type: 'error', message: error.message || 'Export failed' });
+          },
+        });
         setIsRecording(true);
+
+        if (mode === 'multi') {
+          globalMixer.seek(0);
+          globalMixer.playAll();
+          setCurrentTime(0);
+          setIsPlaying(true);
+        }
+      } catch (error) {
+        stageRef.current?.restorePreviewResolution();
+        setExportStatus({ type: 'error', message: error.message || 'Export failed' });
       }
     }
   };
+
+  const canExport = tracks.length > 0 || isLiveListening;
 
   return (
     <div className="min-h-screen flex text-white font-sans overflow-hidden bg-background">
@@ -146,7 +201,7 @@ function App() {
         <div className="p-6 border-b border-border">
           <h1 className="text-2xl font-display font-bold text-gradient flex items-center gap-2">
             <MonitorPlay className="text-accent" />
-            AudioViz
+            AudioViz Studio
           </h1>
         </div>
         
@@ -214,9 +269,9 @@ function App() {
                   onChange={(e) => setLiveStyle(e.target.value)}
                   className="bg-black/50 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-gray-200 outline-none focus:border-primary"
                 >
-                  <option value="psychedelic">Psychedelic</option>
-                  <option value="chladni">Chladni Plates</option>
-                  <option value="fireworks">Particle Ring</option>
+                  <option value="psychedelic">Fluid Field</option>
+                  <option value="chladni">Resonance Plate</option>
+                  <option value="fireworks">Particle Bloom</option>
                 </select>
                </div>
 
@@ -252,7 +307,12 @@ function App() {
       <main className="flex-1 p-4 pl-0 flex flex-col relative overflow-hidden">
         <div className="flex justify-between items-center mb-4 z-10 glass-panel !rounded-xl p-4 shadow-lg bg-surface/80">
           <div className="flex gap-4 items-center">
-            <h2 className="font-display font-semibold text-xl">Master Output</h2>
+            <div>
+              <h2 className="font-display font-semibold text-xl">Master Output</h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {format === 'horizontal' ? '1920 × 1080' : '1080 × 1920'} · 60 FPS
+              </p>
+            </div>
           </div>
           <div className="flex gap-3">
              <button 
@@ -264,9 +324,11 @@ function App() {
              <button 
                className={`glass-button !py-1.5 !px-4 text-sm font-medium ${isRecording ? 'bg-red-500/20 text-red-400 border-red-500/40 hover:bg-red-500/30' : 'bg-accent/10 text-accent border-accent/40 hover:bg-accent/20'}`}
                onClick={toggleRecording}
+               disabled={!canExport}
+               title={!canExport ? 'Add a track or start live listening before exporting' : undefined}
              >
                {isRecording ? <Square className="w-4 h-4 fill-current" /> : <Video className="w-4 h-4" />}
-               {isRecording ? 'Stop Recording' : 'Export Video'}
+               {isRecording ? 'Stop & Save' : 'Export 1080p'}
              </button>
           </div>
         </div>
@@ -280,17 +342,16 @@ function App() {
               {/* Background gradient hint */}
               <div className="absolute inset-0 bg-gradient-to-tr from-primary/10 via-transparent to-secondary/10 pointer-events-none" />
               
-              {/* Overlay grid for debugging positions (can be removed later) */}
-              <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 pointer-events-none opacity-[0.03]">
-                <div className="border-b border-r border-white"></div>
-                <div className="border-b border-white"></div>
-                <div className="border-r border-white"></div>
-                <div></div>
-              </div>
-              
-              <Stage mode={mode} tracks={tracks} format={format} isLiveListening={isLiveListening} liveStyle={liveStyle} />
+              <Stage ref={stageRef} mode={mode} tracks={tracks} format={format} isLiveListening={isLiveListening} liveStyle={liveStyle} />
            </div>
         </div>
+
+        {exportStatus && (
+          <div className={`absolute right-8 top-24 z-30 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs backdrop-blur-xl ${exportStatus.type === 'success' ? 'border-emerald-400/30 bg-emerald-500/15 text-emerald-200' : 'border-red-400/30 bg-red-500/15 text-red-200'}`}>
+            {exportStatus.type === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+            {exportStatus.message}
+          </div>
+        )}
 
         {/* Player Bar */}
         {mode === 'multi' && duration > 0 && (

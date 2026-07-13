@@ -1,3 +1,5 @@
+import { profileAudioBuffer } from './TrackProfiler';
+
 export class Mixer {
   constructor() {
     // We defer context creation until user interaction to comply with browser policies
@@ -10,6 +12,8 @@ export class Mixer {
     this.startTime = 0;
     this.pausedAt = 0;
     this.liveStream = null;
+    this.listeners = new Set();
+    this.playbackGeneration = 0;
   }
 
   init() {
@@ -42,6 +46,7 @@ export class Mixer {
 
     this.tracks.set(id, {
       buffer: audioBuffer,
+      profile: profileAudioBuffer(audioBuffer),
       gain: gainNode,
       analyser: analyserNode,
       source: null
@@ -53,11 +58,20 @@ export class Mixer {
     }
   }
 
+  subscribe(listener) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  emit(event) {
+    this.listeners.forEach(listener => listener(event));
+  }
+
   removeTrack(id) {
     const track = this.tracks.get(id);
     if (track) {
       if (track.source) {
-        try { track.source.stop(); } catch (e) {}
+        try { track.source.stop(); } catch {}
         track.source.disconnect();
       }
       track.analyser.disconnect();
@@ -77,7 +91,14 @@ export class Mixer {
     this.init();
     if (this.isPlaying) return;
 
+    const duration = this.getDuration();
+    if (duration === 0) return;
+    if (this.pausedAt >= duration - 0.01) this.pausedAt = 0;
+
     this.startTime = this.context.currentTime;
+    this.playbackGeneration += 1;
+    const generation = this.playbackGeneration;
+    let remainingSources = 0;
 
     this.tracks.forEach(track => {
       if (track.buffer) {
@@ -87,23 +108,41 @@ export class Mixer {
         
         const offset = Math.min(this.pausedAt, track.buffer.duration);
         source.start(0, offset);
+        remainingSources += 1;
+        source.onended = () => {
+          if (generation !== this.playbackGeneration) return;
+          track.source = null;
+          remainingSources -= 1;
+          if (remainingSources === 0) this.finishPlayback(generation);
+        };
         track.source = source;
       }
     });
     this.isPlaying = true;
+    this.emit({ type: 'play' });
+  }
+
+  finishPlayback(generation) {
+    if (generation !== this.playbackGeneration || !this.isPlaying) return;
+    this.isPlaying = false;
+    this.pausedAt = this.getDuration();
+    this.emit({ type: 'ended', currentTime: this.pausedAt });
   }
 
   stopAll() {
     if (!this.isPlaying) return;
     this.pausedAt += (this.context.currentTime - this.startTime);
+    this.pausedAt = Math.min(this.pausedAt, this.getDuration());
+    this.playbackGeneration += 1;
     this.tracks.forEach(track => {
       if (track.source) {
-        try { track.source.stop(); } catch (e) {}
+        try { track.source.stop(); } catch {}
         track.source.disconnect();
         track.source = null;
       }
     });
     this.isPlaying = false;
+    this.emit({ type: 'pause', currentTime: this.pausedAt });
   }
 
   getDuration() {
@@ -116,7 +155,7 @@ export class Mixer {
 
   getCurrentTime() {
     if (!this.isPlaying) return this.pausedAt;
-    return this.pausedAt + (this.context.currentTime - this.startTime);
+    return Math.min(this.getDuration(), this.pausedAt + (this.context.currentTime - this.startTime));
   }
 
   seek(time) {
@@ -136,6 +175,14 @@ export class Mixer {
     if (track && track.analyser) {
       track.analyser.getByteFrequencyData(dataArray);
     }
+  }
+
+  getTrackAnalyser(id) {
+    return this.tracks.get(id)?.analyser ?? null;
+  }
+
+  getTrackProfile(id) {
+    return this.tracks.get(id)?.profile ?? null;
   }
 
   // LIVE MODE

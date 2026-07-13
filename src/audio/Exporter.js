@@ -6,14 +6,22 @@ export class VideoExporter {
     this.recordedChunks = [];
     this.isRecording = false;
     this.audioDestination = null;
+    this.combinedStream = null;
+    this.onComplete = null;
+    this.onError = null;
   }
 
-  startRecording(canvas) {
-    if (this.isRecording) return;
+  startRecording(canvas, options = {}) {
+    if (this.isRecording) return false;
+    if (!canvas?.captureStream || typeof MediaRecorder === 'undefined') {
+      throw new Error('Video recording is not supported by this browser.');
+    }
     this.recordedChunks = [];
+    this.onComplete = options.onComplete ?? null;
+    this.onError = options.onError ?? null;
 
     // Capture video stream from canvas
-    const canvasStream = canvas.captureStream(60); // 60 FPS
+    const canvasStream = canvas.captureStream(options.frameRate ?? 60);
 
     // Merge audio from the global mixer
     let audioStream;
@@ -46,11 +54,11 @@ export class VideoExporter {
     const combinedStream = new MediaStream(tracks);
 
     const mimeTypes = [
-      'video/mp4',
-      'video/mp4;codecs=avc1',
-      'video/mp4;codecs=h264',
       'video/webm;codecs=vp9',
-      'video/webm'
+      'video/webm;codecs=vp8',
+      'video/webm',
+      'video/mp4;codecs=avc1',
+      'video/mp4',
     ];
     
     let selectedMimeType = '';
@@ -62,7 +70,13 @@ export class VideoExporter {
     }
 
     this.recordedMimeType = selectedMimeType;
-    this.mediaRecorder = new MediaRecorder(combinedStream, { mimeType: selectedMimeType });
+    this.combinedStream = combinedStream;
+    const recorderOptions = {
+      videoBitsPerSecond: options.videoBitsPerSecond ?? 14_000_000,
+      audioBitsPerSecond: options.audioBitsPerSecond ?? 192_000,
+    };
+    if (selectedMimeType) recorderOptions.mimeType = selectedMimeType;
+    this.mediaRecorder = new MediaRecorder(combinedStream, recorderOptions);
     
     this.mediaRecorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
@@ -71,20 +85,29 @@ export class VideoExporter {
     };
 
     this.mediaRecorder.onstop = () => {
-      this.downloadVideo();
+      if (this.recordedChunks.length > 0) this.downloadVideo();
       
       // Cleanup
       if (this.audioDestination) {
-         try { globalMixer.masterGain.disconnect(this.audioDestination); } catch (e) {}
+         try { globalMixer.masterGain.disconnect(this.audioDestination); } catch {}
          const liveTrack = globalMixer.tracks.get('live');
          if (liveTrack && liveTrack.source) {
-             try { liveTrack.source.disconnect(this.audioDestination); } catch (e) {}
+             try { liveTrack.source.disconnect(this.audioDestination); } catch {}
          }
       }
+      this.combinedStream?.getTracks().forEach(track => track.stop());
+      this.combinedStream = null;
+      this.onComplete?.({ mimeType: this.recordedMimeType });
+    };
+
+    this.mediaRecorder.onerror = (event) => {
+      this.isRecording = false;
+      this.onError?.(event.error ?? new Error('Recording failed.'));
     };
 
     this.mediaRecorder.start(100);
     this.isRecording = true;
+    return true;
   }
 
   stopRecording() {
@@ -104,7 +127,8 @@ export class VideoExporter {
     a.href = url;
     a.download = `AudioViz_Export_${Date.now()}.${extension}`;
     a.click();
-    window.URL.revokeObjectURL(url);
+    a.remove();
+    window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
     this.recordedChunks = [];
   }
 }

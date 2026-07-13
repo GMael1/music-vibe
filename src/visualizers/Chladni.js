@@ -3,9 +3,39 @@ import * as THREE from 'three';
 export function getChladniMaterial() {
   const uniforms = {
     uTime: { value: 0 },
-    uFreq: { value: 0 },
-    uFreqHigh: { value: 0 },
-    uHue: { value: 0 }
+    uJourney: { value: 0 },
+    uSub: { value: 0 },
+    uBass: { value: 0 },
+    uLowMid: { value: 0 },
+    uMid: { value: 0 },
+    uHighMid: { value: 0 },
+    uTreble: { value: 0 },
+    uSpectralLow: { value: 0 },
+    uSpectralMid: { value: 0 },
+    uSpectralHigh: { value: 0 },
+    uLevel: { value: 0 },
+    uBeat: { value: 0 },
+    uOnset: { value: 0 },
+    uFlux: { value: 0 },
+    uCentroid: { value: 0 },
+    uPitch: { value: 0.5 },
+    uAbsolutePitch: { value: 0.3 },
+    uSpread: { value: 0 },
+    uTonality: { value: 0.5 },
+    uFamilyA: { value: 0 },
+    uFamilyB: { value: 0 },
+    uModeAX: { value: 3 },
+    uModeAY: { value: 5 },
+    uModeBX: { value: 3 },
+    uModeBY: { value: 5 },
+    uRotationA: { value: 0 },
+    uRotationB: { value: 0 },
+    uSeedA: { value: 0 },
+    uSeedB: { value: 0 },
+    uFamilyMix: { value: 0 },
+    uHue: { value: 0 },
+    uOpacity: { value: 0.94 },
+    uAspect: { value: 1 },
   };
 
   const vertexShader = `
@@ -18,115 +48,198 @@ export function getChladniMaterial() {
 
   const fragmentShader = `
     uniform float uTime;
-    uniform float uFreq;
-    uniform float uFreqHigh;
+    uniform float uJourney;
+    uniform float uSub;
+    uniform float uBass;
+    uniform float uLowMid;
+    uniform float uMid;
+    uniform float uHighMid;
+    uniform float uTreble;
+    uniform float uSpectralLow;
+    uniform float uSpectralMid;
+    uniform float uSpectralHigh;
+    uniform float uLevel;
+    uniform float uBeat;
+    uniform float uOnset;
+    uniform float uFlux;
+    uniform float uCentroid;
+    uniform float uPitch;
+    uniform float uAbsolutePitch;
+    uniform float uSpread;
+    uniform float uTonality;
+    uniform float uFamilyA;
+    uniform float uFamilyB;
+    uniform float uModeAX;
+    uniform float uModeAY;
+    uniform float uModeBX;
+    uniform float uModeBY;
+    uniform float uRotationA;
+    uniform float uRotationB;
+    uniform float uSeedA;
+    uniform float uSeedB;
+    uniform float uFamilyMix;
     uniform float uHue;
+    uniform float uOpacity;
+    uniform float uAspect;
     varying vec2 vUv;
-    
-    vec3 hueShift(vec3 color, float hue) {
-        const vec3 k = vec3(0.57735, 0.57735, 0.57735);
-        float cosAngle = cos(hue);
-        return vec3(color * cosAngle + cross(k, color) * sin(hue) + k * dot(k, color) * (1.0 - cosAngle));
-    }
-    
-    // Smooth noise function for fluid
-    vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-    vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-    vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
-    float snoise(vec2 v) {
-      const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
-      vec2 i  = floor(v + dot(v, C.yy));
-      vec2 x0 = v -   i + dot(i, C.xx);
-      vec2 i1;
-      i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
-      vec4 x12 = x0.xyxy + C.xxzz;
-      x12.xy -= i1;
-      i = mod289(i);
-      vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
-      vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
-      m = m*m ;
-      m = m*m ;
-      vec3 x = 2.0 * fract(p * C.www) - 1.0;
-      vec3 h = abs(x) - 0.5;
-      vec3 ox = floor(x + 0.5);
-      vec3 a0 = x - ox;
-      m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
-      vec3 g;
-      g.x  = a0.x  * x0.x  + h.x  * x0.y;
-      g.yz = a0.yz * x12.xz + h.yz * x12.yw;
-      return 130.0 * dot(m, g);
-    }
-    
-    float getHeight(vec2 uv) {
-      float n = 2.0 + uFreq * 6.0;
-      float m = 3.0 + uFreqHigh * 6.0;
-      
-      // Map uv to pos space, say from -1.5 to 1.5
-      vec2 p = (uv * 2.0 - 1.0) * 1.5;
-      
-      float chladni = cos(n * 3.1415 * p.x) * cos(m * 3.1415 * p.y) - cos(m * 3.1415 * p.x) * cos(n * 3.1415 * p.y);
-      float plateHeight = abs(chladni);
-      
-      float fluid = snoise(p * 2.0 + uTime * 0.5) * 0.2;
-      fluid += snoise(p * 5.0 - uTime * 0.3) * 0.1;
-      
-      float amplitude = 0.3 + uFreq * 0.6;
-      return (plateHeight * 0.5 + fluid) * amplitude;
-    }
-    
-    vec3 getNormal(vec2 uv) {
-      float eps = 0.005; // sampling distance
-      float h0 = getHeight(uv);
-      float h1 = getHeight(uv + vec2(eps, 0.0));
-      float h2 = getHeight(uv + vec2(0.0, eps));
-      
-      // Calculate tangents
-      vec3 dX = vec3(eps, 0.0, h1 - h0);
-      vec3 dY = vec3(0.0, eps, h2 - h0);
-      return normalize(cross(dX, dY));
-    }
-    
-    void main() {
-      float height = getHeight(vUv);
-      vec3 normal = getNormal(vUv);
-      
-      // Pseudo world position for lighting
-      vec3 worldPos = vec3(vUv * 2.0 - 1.0, height);
-      
-      // Lighting setup
-      vec3 lightDir = normalize(vec3(1.0, 1.5, 0.5));
-      vec3 viewDir = normalize(vec3(0.0, 0.0, 1.0)); // Ortho camera looks straight down Z
-      vec3 halfVector = normalize(lightDir + viewDir);
-      
-      // Ambient
-      vec3 ambient = vec3(0.02, 0.05, 0.1);
-      
-      // Diffuse
-      float diff = max(dot(normal, lightDir), 0.0);
-      
-      // Specular (shiny liquid)
-      float spec = pow(max(dot(normal, halfVector), 0.0), 64.0);
-      
-      // Fluid colors shifting from deep blue to glowing pink/orange based on normal and frequency
-      vec3 baseColor = mix(vec3(0.1, 0.2, 0.6), vec3(0.9, 0.3, 0.5), normal.y * 0.5 + 0.5);
-      baseColor = mix(baseColor, vec3(0.1, 0.9, 0.8), uFreqHigh * 0.5);
-      
-      // Height-based coloring (valleys vs peaks)
-      vec3 heightColor = mix(vec3(0.0, 0.0, 0.1), baseColor, smoothstep(-0.2, 0.4, height));
-      
-      vec3 finalColor = ambient + heightColor * diff + vec3(1.0) * spec * (0.3 + uFreq * 0.7);
-      
-      // Add a fresnel glow for that modern 3D look
-      float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), 3.0);
-      finalColor += vec3(0.5, 0.8, 1.0) * fresnel * (0.2 + uFreq * 0.4);
-      
-      // Smooth fade out at the edges so it takes up the screen elegantly
-      float dist = length(vUv * 2.0 - 1.0);
-      float alpha = smoothstep(1.0, 0.95, dist); // Crisp, anti-aliased edge
-      
-      finalColor = hueShift(finalColor, uHue);
 
-      gl_FragColor = vec4(finalColor, alpha);
+    mat2 rotate2d(float angle) {
+      float s = sin(angle);
+      float c = cos(angle);
+      return mat2(c, -s, s, c);
+    }
+
+    float hash21(vec2 p) {
+      p = fract(p * vec2(123.34, 345.45));
+      p += dot(p, p + 34.345);
+      return fract(p.x * p.y);
+    }
+
+    float noise(vec2 p) {
+      vec2 i = floor(p);
+      vec2 f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(hash21(i), hash21(i + vec2(1.0, 0.0)), f.x),
+                 mix(hash21(i + vec2(0.0, 1.0)), hash21(i + 1.0), f.x), f.y);
+    }
+
+    vec3 hueShift(vec3 color, float hue) {
+      const vec3 axis = vec3(0.57735);
+      return color * cos(hue) + cross(axis, color) * sin(hue)
+        + axis * dot(axis, color) * (1.0 - cos(hue));
+    }
+
+    float rectangularField(vec2 p, float n, float m) {
+      float x = p.x * 3.14159265;
+      float y = p.y * 3.14159265;
+      return cos(n * x) * cos(m * y) - cos(m * x) * cos(n * y);
+    }
+
+    float radialField(vec2 p, float n, float m, float seed) {
+      float radius = length(p) * (1.0 + seed * 0.16);
+      float angle = atan(p.y, p.x);
+      float rings = sin(radius * 3.14159265 * (n * 0.72 + 1.4));
+      float spokes = cos(angle * max(2.0, floor(m * 0.72)) + seed * 6.2831853);
+      return rings * spokes;
+    }
+
+    float diagonalField(vec2 p, float n, float m, float seed) {
+      vec2 q = rotate2d(0.785398 + (seed - 0.5) * 0.22) * p;
+      float diagonalA = sin((q.x + q.y) * n * 2.4) * sin((q.x - q.y) * m * 2.4);
+      float diagonalB = cos(q.x * m * 2.1) * cos(q.y * n * 2.1);
+      return diagonalA - diagonalB * 0.62;
+    }
+
+    float coupledField(vec2 p, float n, float m, float seed) {
+      float separation = 0.18 + seed * 0.28;
+      vec2 offset = vec2(separation, (seed - 0.5) * 0.16);
+      float sourceA = sin(length(p - offset) * 3.14159265 * (n + 1.2));
+      float sourceB = sin(length(p + offset) * 3.14159265 * (m + 0.8));
+      float bridge = sin(p.y * 3.14159265 * (n + m) * 0.5) * 0.34;
+      return sourceA - sourceB + bridge;
+    }
+
+    float membraneField(vec2 p, float n, float m, float seed) {
+      float angle = atan(p.y, p.x);
+      float superRadius = pow(pow(abs(p.x), 2.6) + pow(abs(p.y), 2.6), 1.0 / 2.6);
+      float breathingEdge = superRadius * (1.0 + sin(angle * max(2.0, floor(m * 0.55)) + seed * 6.2831853) * 0.16);
+      float radial = sin(breathingEdge * 3.14159265 * (n * 0.65 + 1.8));
+      float lobes = cos(angle * max(2.0, floor(m * 0.48)) + sin(superRadius * 5.0 + seed * 4.0));
+      return radial + lobes * (0.48 + uSpread * 0.2);
+    }
+
+    float resonanceField(vec2 p, float family, float n, float m, float rotation, float seed) {
+      vec2 q = rotate2d(rotation) * p;
+      if (family < 0.5) return rectangularField(q, n, m);
+      if (family < 1.5) return radialField(q, n, m, seed);
+      if (family < 2.5) return diagonalField(q, n, m, seed);
+      if (family < 3.5) return coupledField(q, n, m, seed);
+      return membraneField(q, n, m, seed);
+    }
+
+    vec2 fluidWarp(vec2 p) {
+      float flow = 0.014 + uSpectralMid * 0.052 + uSpread * 0.035 + uFlux * 0.09;
+      vec2 curl = vec2(
+        noise(p * (1.8 + uSpectralMid * 1.7) + vec2(uTime * 0.32, uJourney * 3.0)),
+        noise(p * (2.1 + uSpectralHigh * 1.9) - vec2(uJourney * 2.0, uTime * 0.27))
+      ) - 0.5;
+      return p + curl * flow;
+    }
+
+    float modeField(vec2 p) {
+      float familyA = resonanceField(p, uFamilyA, uModeAX, uModeAY, uRotationA, uSeedA);
+      float familyB = resonanceField(p, uFamilyB, uModeBX, uModeBY, uRotationB, uSeedB);
+      float familyBlend = smoothstep(0.04, 0.96, uFamilyMix);
+      float field = mix(familyA, familyB, familyBlend);
+
+      float bassWave = sin(length(p) * (7.0 + uSpectralLow * 10.0) - uTime * 2.2);
+      float impactWave = sin(length(p) * (18.0 + uSpread * 12.0) - uTime * 8.0) * uOnset;
+      field += bassWave * uSpectralLow * 0.16 + impactWave * 0.25;
+      return field;
+    }
+
+    float sandDensity(vec2 warpedP) {
+      float field = abs(modeField(warpedP));
+      float focus = 4.4 + uSpectralHigh * 6.8 + uSpread * 2.2;
+      return exp(-field * focus);
+    }
+
+    void main() {
+      vec2 plateUv = vUv * 2.0 - 1.0;
+      vec2 p = plateUv;
+      p.x *= uAspect;
+      p *= 0.72 + uSpectralLow * 0.14 + uSpread * 0.05;
+      p *= vec2(
+        1.0 + (uCentroid - 0.5) * 0.18,
+        1.0 + (uAbsolutePitch - 0.5) * 0.17
+      );
+      p = rotate2d(uJourney * 0.45 + (uSpectralMid - 0.5) * 0.12) * p;
+
+      vec2 warpedP = fluidWarp(p);
+      float density = sandDensity(warpedP);
+      float epsilon = 0.0035;
+      float densityX = sandDensity(warpedP + vec2(epsilon, 0.0));
+      float densityY = sandDensity(warpedP + vec2(0.0, epsilon));
+      vec3 normal = normalize(vec3((density - densityX) * 2.8, (density - densityY) * 2.8, 0.055));
+      vec2 gradient = normalize(vec2(density - densityX, density - densityY) + vec2(0.00001));
+      vec2 tangent = vec2(-gradient.y, gradient.x);
+
+      float grainTravel = uTime * (1.6 + uFlux * 5.5 + uSpectralMid * 2.2);
+      vec2 grainGrid = floor(vUv * vec2(1900.0, 1080.0) + warpedP * 19.0 + tangent * grainTravel);
+      float grainRandom = hash21(grainGrid);
+      float grainThreshold = 0.76 - density * (0.5 + uSpectralHigh * 0.18);
+      float individualGrains = smoothstep(grainThreshold, grainThreshold + 0.08, grainRandom);
+      float fineDust = hash21(grainGrid * 0.53 + 71.7) * density;
+      float sand = density * (0.2 + individualGrains * 0.92 + fineDust * 0.25);
+
+      vec3 lightDirection = normalize(vec3(-0.55, 0.65, 0.95));
+      vec3 halfVector = normalize(lightDirection + vec3(0.0, 0.0, 1.0));
+      float diffuse = max(dot(normal, lightDirection), 0.0);
+      float specular = pow(max(dot(normal, halfVector), 0.0), 70.0);
+      float edgeGlint = pow(1.0 - max(normal.z, 0.0), 2.4);
+
+      vec3 voidColor = vec3(0.0015, 0.002, 0.006);
+      vec3 darkMetal = vec3(0.055, 0.07, 0.085);
+      vec3 silver = vec3(0.68, 0.76, 0.78);
+      vec3 alienCyan = vec3(0.16, 0.92, 0.82);
+      vec3 ultraviolet = vec3(0.34, 0.08, 0.7);
+      vec3 color = voidColor;
+      color += darkMetal * density * (0.5 + diffuse * 0.8);
+      color += silver * sand * (0.2 + diffuse * 0.72);
+      color += alienCyan * specular * (0.28 + uSpectralHigh * 0.9);
+      color += ultraviolet * edgeGlint * density * (0.12 + uSpectralMid * 0.4);
+      color += alienCyan * individualGrains * uSpectralHigh * 0.3;
+      color += silver * fineDust * (1.0 - uTonality) * 0.16;
+
+      float impactRing = exp(-abs(length(p) - (0.24 + uBeat * 0.38)) * 34.0) * uBeat;
+      color += silver * impactRing * 0.45;
+      color = hueShift(color, uHue + uJourney * 0.08);
+
+      float vignette = smoothstep(1.25, 0.32, length(plateUv));
+      float outerGlow = exp(-abs(length(plateUv) - 0.83) * 12.0) * 0.04;
+      color *= 0.64 + vignette * 0.48;
+      color += alienCyan * outerGlow * (0.2 + uLevel);
+      gl_FragColor = vec4(color, uOpacity);
     }
   `;
 
@@ -135,11 +248,10 @@ export function getChladniMaterial() {
     vertexShader,
     fragmentShader,
     transparent: true,
-    side: THREE.DoubleSide
+    depthTest: false,
+    depthWrite: false,
+    blending: THREE.NormalBlending,
   });
 
-  // Since we compute height per-pixel in the fragment shader, we only need 1 quad! Infinite resolution!
-  const geometry = new THREE.PlaneGeometry(3, 3, 1, 1);
-
-  return { material, uniforms, geometry };
+  return { material, uniforms, geometry: new THREE.PlaneGeometry(1, 1) };
 }
