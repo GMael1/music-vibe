@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #0f0c29;
+  --color-surface: rgba(255, 255, 255, 0.05);
+  --color-surface-hover: rgba(255, 255, 255, 0.1);
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-primary: #8a2be2; /* BlueViolet */
+  --color-secondary: #ff00ff; /* Fuchsia */
+  --color-accent: #00ffff; /* Cyan */
+  
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: 'Outfit', system-ui, sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-white antialiased selection:bg-primary/30;
+    background: linear-gradient(to right, #0f0c29, #302b63, #24243e);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply bg-surface backdrop-blur-xl border border-border rounded-2xl shadow-2xl;
+  }
+  .glass-button {
+    @apply px-4 py-2 bg-surface hover:bg-surface-hover backdrop-blur-md border border-border rounded-lg transition-all duration-300 ease-out flex items-center justify-center gap-2 active:scale-95;
+  }
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-secondary to-accent;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-surface-hover rounded-full;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-border;
+}
