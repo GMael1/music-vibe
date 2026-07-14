@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Mic, Upload, Play, MonitorPlay, Square, Video, CheckCircle2, AlertCircle, Menu, X } from 'lucide-react';
+import { Mic, Upload, Play, MonitorPlay, Square, Video, CheckCircle2, AlertCircle, Menu, X, Sparkles, LoaderCircle } from 'lucide-react';
 import { globalMixer } from './audio/Mixer';
 import { globalExporter } from './audio/Exporter';
 import TrackItem from './components/TrackItem';
@@ -16,6 +16,7 @@ function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [exportStatus, setExportStatus] = useState(null);
   const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false);
+  const [isLoadingExample, setIsLoadingExample] = useState(false);
   
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -81,35 +82,36 @@ function App() {
     }
   }, [mode]);
 
+  const addAudioTrack = async (name, arrayBuffer) => {
+    globalMixer.init();
+    const audioBuffer = await globalMixer.decodeAudioData(arrayBuffer);
+    const visualDefaults = {
+      visualStyle: 'serpent',
+      sceneRole: 'auto',
+      position: 'background',
+      opacity: 1,
+      blendMode: 'normal',
+    };
+    const newTrack = {
+      id: `track-${crypto.randomUUID?.() ?? Date.now()}`,
+      name,
+      ...visualDefaults,
+      volume: 1.0,
+      reactivity: 1.0,
+      hue: 0.0,
+      buffer: audioBuffer,
+    };
+
+    globalMixer.addTrack(newTrack.id, audioBuffer);
+    setTracks(prev => [...prev, newTrack]);
+  };
+
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
-    globalMixer.init();
-    
     try {
-      const arrayBuffer = await file.arrayBuffer();
-      const audioBuffer = await globalMixer.decodeAudioData(arrayBuffer);
-      
-      const visualDefaults = {
-        visualStyle: 'serpent',
-        sceneRole: 'auto',
-        position: 'background',
-        opacity: 1,
-        blendMode: 'normal',
-      };
-      const newTrack = {
-        id: `track-${crypto.randomUUID?.() ?? Date.now()}`,
-        name: file.name,
-        ...visualDefaults,
-        volume: 1.0,
-        reactivity: 1.0,
-        hue: 0.0,
-        buffer: audioBuffer,
-      };
-      
-      globalMixer.addTrack(newTrack.id, audioBuffer);
-      setTracks(prev => [...prev, newTrack]);
+      await addAudioTrack(file.name, await file.arrayBuffer());
     } catch (e) {
       console.error("Failed to load audio:", e);
       alert("Failed to load audio file.");
@@ -117,6 +119,22 @@ function App() {
     
     // reset input
     event.target.value = '';
+  };
+
+  const handleLoadExample = async () => {
+    if (isLoadingExample || tracks.length >= 6) return;
+    setIsLoadingExample(true);
+
+    try {
+      const response = await fetch(`${import.meta.env.BASE_URL}examples/audioviz-reactivity-test.wav`);
+      if (!response.ok) throw new Error(`Example audio request failed (${response.status})`);
+      await addAudioTrack('AudioViz Reactivity Example', await response.arrayBuffer());
+    } catch (error) {
+      console.error('Failed to load example audio:', error);
+      alert('Failed to load the example audio.');
+    } finally {
+      setIsLoadingExample(false);
+    }
   };
 
   const removeTrack = (id) => {
@@ -274,12 +292,23 @@ function App() {
                )}
                
                {tracks.length < 6 && (
-                 <button 
-                   className="glass-button w-full mt-2 text-sm text-accent border-accent/30 hover:bg-accent/10 hover:border-accent border-dashed"
-                   onClick={() => fileInputRef.current?.click()}
-                 >
-                   + Add Audio Track
-                 </button>
+                 <div className="grid grid-cols-2 gap-2 mt-2">
+                   <button
+                     className="glass-button min-h-11 w-full text-sm text-secondary border-secondary/30 hover:bg-secondary/10 hover:border-secondary"
+                     onClick={handleLoadExample}
+                     disabled={isLoadingExample}
+                   >
+                     {isLoadingExample ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                     {isLoadingExample ? 'Loading…' : 'Load Example'}
+                   </button>
+                   <button
+                     className="glass-button min-h-11 w-full text-sm text-accent border-accent/30 hover:bg-accent/10 hover:border-accent border-dashed"
+                     onClick={() => fileInputRef.current?.click()}
+                   >
+                     <Upload className="w-4 h-4" />
+                     Upload Audio
+                   </button>
+                 </div>
                )}
                <input 
                  type="file" 
