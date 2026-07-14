@@ -28,6 +28,11 @@ const IDLE_FEATURES = {
   onset: 0,
 };
 
+function dampAudioValue(current, target, delta, attack, release) {
+  const speed = target > current ? attack : release;
+  return current + (target - current) * (1 - Math.exp(-speed * delta));
+}
+
 function getIdleFeatures(time) {
   const pulsePhase = time % 2;
   const pulse = Math.exp(-pulsePhase * 4.8);
@@ -255,6 +260,15 @@ export class VisualizerEngine {
       style: 'serpent',
       position: 'background',
       tracks: [],
+      smoothAudio: {
+        level: 0,
+        bass: 0,
+        mid: 0,
+        high: 0,
+        flux: 0,
+        onset: 0,
+        hue: 0,
+      },
     };
   }
 
@@ -292,15 +306,23 @@ export class VisualizerEngine {
       if (obj.style === 'serpent') {
         const demoFeatures = this.serpentDemo ? getIdleFeatures(time) : null;
         const summary = obj.router.update(delta, demoFeatures);
-        obj.visualTime += delta * (0.04 + summary.level * 1.45 + summary.flux * 0.7);
+        const smooth = obj.smoothAudio;
+        smooth.level = dampAudioValue(smooth.level, summary.level, delta, 2.4, 1.05);
+        smooth.bass = dampAudioValue(smooth.bass, summary.bass, delta, 2.0, 0.9);
+        smooth.mid = dampAudioValue(smooth.mid, summary.mid, delta, 2.6, 1.05);
+        smooth.high = dampAudioValue(smooth.high, summary.high, delta, 3.2, 1.25);
+        smooth.flux = dampAudioValue(smooth.flux, summary.flux, delta, 2.5, 1.1);
+        smooth.onset = dampAudioValue(smooth.onset, summary.onset, delta, 5.0, 1.55);
+        smooth.hue = dampAudioValue(smooth.hue, summary.hue, delta, 1.2, 1.2);
+        obj.visualTime += delta * (0.026 + smooth.level * 0.11 + smooth.flux * 0.055);
         obj.uniforms.uTime.value = obj.visualTime;
-        obj.uniforms.uLevel.value = summary.level;
-        obj.uniforms.uBass.value = summary.bass;
-        obj.uniforms.uMid.value = summary.mid;
-        obj.uniforms.uHigh.value = summary.high;
-        obj.uniforms.uFlux.value = summary.flux;
-        obj.uniforms.uOnset.value = summary.onset;
-        obj.uniforms.uHue.value = summary.hue;
+        obj.uniforms.uLevel.value = smooth.level;
+        obj.uniforms.uBass.value = smooth.bass;
+        obj.uniforms.uMid.value = smooth.mid;
+        obj.uniforms.uHigh.value = smooth.high;
+        obj.uniforms.uFlux.value = smooth.flux;
+        obj.uniforms.uOnset.value = smooth.onset;
+        obj.uniforms.uHue.value = smooth.hue;
         continue;
       }
 

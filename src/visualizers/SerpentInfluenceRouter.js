@@ -21,6 +21,12 @@ const SILENCE = {
 
 const clamp01 = value => Math.max(0, Math.min(1, value));
 
+function smoothChannel(currentByte, target, dt) {
+  const current = currentByte / 255;
+  const speed = target > current ? 3.1 : 1.25;
+  return Math.round((current + (target - current) * (1 - Math.exp(-speed * dt))) * 255);
+}
+
 function circularDistance(a, b) {
   const distance = Math.abs(a - b);
   return Math.min(distance, 1 - distance);
@@ -156,10 +162,10 @@ export class SerpentInfluenceRouter {
       }
 
       const offset = index * 4;
-      this.data[offset] = Math.round(clamp01(motion) * 255);
-      this.data[offset + 1] = Math.round(clamp01(skin) * 255);
-      this.data[offset + 2] = Math.round(clamp01(energy) * 255);
-      this.data[offset + 3] = Math.round(clamp01(light) * 255);
+      this.data[offset] = smoothChannel(this.data[offset], clamp01(motion), dt);
+      this.data[offset + 1] = smoothChannel(this.data[offset + 1], clamp01(skin), dt);
+      this.data[offset + 2] = smoothChannel(this.data[offset + 2], clamp01(energy), dt);
+      this.data[offset + 3] = smoothChannel(this.data[offset + 3], clamp01(light), dt);
     }
     this.texture.needsUpdate = true;
 
