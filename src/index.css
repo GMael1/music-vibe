@@ -18,7 +18,21 @@
     @apply bg-background text-white antialiased selection:bg-primary/30;
     background: linear-gradient(to right, #0f0c29, #302b63, #24243e);
     min-height: 100vh;
+    min-height: 100dvh;
     overflow-x: hidden;
+    overscroll-behavior: none;
+  }
+}
+
+@media (max-width: 1023px) {
+  button,
+  select,
+  input[type="range"] {
+    touch-action: manipulation;
+  }
+
+  select {
+    font-size: 16px;
   }
 }
 

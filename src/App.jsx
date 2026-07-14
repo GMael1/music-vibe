@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Mic, Upload, Play, MonitorPlay, Square, Video, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Mic, Upload, Play, MonitorPlay, Square, Video, CheckCircle2, AlertCircle, Menu, X } from 'lucide-react';
 import { globalMixer } from './audio/Mixer';
 import { globalExporter } from './audio/Exporter';
 import TrackItem from './components/TrackItem';
@@ -15,6 +15,7 @@ function App() {
   const [liveStyle, setLiveStyle] = useState('serpent');
   const [isRecording, setIsRecording] = useState(false);
   const [exportStatus, setExportStatus] = useState(null);
+  const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false);
   
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -44,6 +45,15 @@ function App() {
       if (globalExporter.isRecording) globalExporter.stopRecording();
     }
   }), []);
+
+  useEffect(() => {
+    if (!isMobilePanelOpen) return undefined;
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setIsMobilePanelOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [isMobilePanelOpen]);
 
   const handleSeek = (e) => {
     const time = parseFloat(e.target.value);
@@ -197,14 +207,33 @@ function App() {
   const canExport = tracks.length > 0 || isLiveListening;
 
   return (
-    <div className="min-h-screen flex text-white font-sans overflow-hidden bg-background">
+    <div className="app-shell text-white font-sans bg-background">
+      <button
+        type="button"
+        aria-label="Close controls"
+        className={`mobile-drawer-backdrop ${isMobilePanelOpen ? 'is-visible' : ''}`}
+        onClick={() => setIsMobilePanelOpen(false)}
+      />
+
       {/* Sidebar / Track Manager */}
-      <aside className="w-80 glass-panel m-4 flex flex-col z-10 shrink-0 shadow-[0_0_30px_rgba(0,0,0,0.5)]">
-        <div className="p-6 border-b border-border">
+      <aside
+        id="studio-controls"
+        aria-label="Audio and visual controls"
+        className={`studio-sidebar w-80 glass-panel m-4 flex flex-col z-50 shrink-0 shadow-[0_0_30px_rgba(0,0,0,0.5)] ${isMobilePanelOpen ? 'is-open' : ''}`}
+      >
+        <div className="p-6 border-b border-border flex items-center gap-3">
           <h1 className="text-2xl font-display font-bold text-gradient flex items-center gap-2">
             <MonitorPlay className="text-accent" />
             AudioViz Studio
           </h1>
+          <button
+            type="button"
+            aria-label="Close controls"
+            className="mobile-close-button ml-auto text-gray-300 hover:text-white"
+            onClick={() => setIsMobilePanelOpen(false)}
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
         
         {/* Mode Switcher */}
@@ -306,25 +335,44 @@ function App() {
       </aside>
 
       {/* Main Stage */}
-      <main className="flex-1 p-4 pl-0 flex flex-col relative overflow-hidden">
-        <div className="flex justify-between items-center mb-4 z-10 glass-panel !rounded-xl p-4 shadow-lg bg-surface/80">
+      <main className="studio-main flex-1 p-4 pl-0 flex flex-col relative overflow-hidden min-w-0 min-h-0">
+        <div className="mobile-app-header">
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-[0.22em] text-gray-500">AudioViz</p>
+            <h1 className="font-display font-semibold text-base truncate">Visual Studio</h1>
+          </div>
+          <button
+            type="button"
+            className="mobile-controls-button"
+            aria-controls="studio-controls"
+            aria-expanded={isMobilePanelOpen}
+            onClick={() => setIsMobilePanelOpen(true)}
+          >
+            <Menu className="w-5 h-5" />
+            Controls
+          </button>
+        </div>
+
+        <div className="output-toolbar flex justify-between items-center mb-4 z-10 glass-panel !rounded-xl p-4 shadow-lg bg-surface/80">
           <div className="flex gap-4 items-center">
             <div>
-              <h2 className="font-display font-semibold text-xl">Master Output</h2>
+              <h2 className="output-title font-display font-semibold text-xl">Master Output</h2>
               <p className="text-xs text-gray-400 mt-0.5">
                 {format === 'horizontal' ? '1920 × 1080' : '1080 × 1920'} · 60 FPS
               </p>
             </div>
           </div>
-          <div className="flex gap-3">
+          <div className="output-actions flex gap-3">
              <button 
-                className="glass-button !py-1.5 !px-4 text-sm"
+                className="format-button glass-button !py-1.5 !px-4 text-sm"
+                aria-label={format === 'horizontal' ? 'Switch to vertical format' : 'Switch to horizontal format'}
                 onClick={() => setFormat(f => f === 'horizontal' ? 'vertical' : 'horizontal')}
               >
-               {format === 'horizontal' ? '📱 Vertical Format' : '💻 Horizontal Format'}
+               <span aria-hidden="true">{format === 'horizontal' ? '📱' : '💻'}</span>
+               <span className="format-button-label">{format === 'horizontal' ? 'Vertical Format' : 'Horizontal Format'}</span>
              </button>
              <button 
-               className={`glass-button !py-1.5 !px-4 text-sm font-medium ${isRecording ? 'bg-red-500/20 text-red-400 border-red-500/40 hover:bg-red-500/30' : 'bg-accent/10 text-accent border-accent/40 hover:bg-accent/20'}`}
+               className={`export-button glass-button !py-1.5 !px-4 text-sm font-medium ${isRecording ? 'bg-red-500/20 text-red-400 border-red-500/40 hover:bg-red-500/30' : 'bg-accent/10 text-accent border-accent/40 hover:bg-accent/20'}`}
                onClick={toggleRecording}
                disabled={!canExport}
                title={!canExport ? 'Add a track or start live listening before exporting' : undefined}
@@ -336,10 +384,9 @@ function App() {
         </div>
 
         {/* Canvas Area */}
-        <div className="flex-1 glass-panel flex items-center justify-center p-8 relative overflow-hidden shadow-[inset_0_0_100px_rgba(0,0,0,0.5)]">
+        <div className="canvas-panel flex-1 min-h-0 glass-panel flex items-center justify-center p-8 relative overflow-hidden shadow-[inset_0_0_100px_rgba(0,0,0,0.5)]">
            <div 
-             className={`bg-[#050505] border border-white/5 shadow-2xl flex items-center justify-center transition-all duration-500 ease-out relative overflow-hidden ${format === 'horizontal' ? 'aspect-video w-full max-h-full' : 'aspect-[9/16] h-full max-w-full'}`}
-             style={{ borderRadius: '8px' }}
+             className={`stage-frame bg-[#050505] border border-white/5 shadow-2xl flex items-center justify-center transition-all duration-500 ease-out relative overflow-hidden ${format === 'horizontal' ? 'stage-horizontal' : 'stage-vertical'}`}
            >
               {/* Background gradient hint */}
               <div className="absolute inset-0 bg-gradient-to-tr from-primary/10 via-transparent to-secondary/10 pointer-events-none" />
@@ -357,9 +404,10 @@ function App() {
 
         {/* Player Bar */}
         {mode === 'multi' && duration > 0 && (
-          <div className="shrink-0 mt-4 p-4 glass-panel !rounded-xl flex items-center gap-4 z-10 shadow-lg bg-surface/80">
+          <div className="player-bar shrink-0 mt-4 p-4 glass-panel !rounded-xl flex items-center gap-4 z-10 shadow-lg bg-surface/80">
             <button 
-              className={`p-2 rounded-full ${isPlaying ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'} transition-colors`}
+              aria-label={isPlaying ? 'Stop playback' : 'Start playback'}
+              className={`player-button p-2 rounded-full ${isPlaying ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'} transition-colors`}
               onClick={togglePlayback}
             >
               {isPlaying ? <Square className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current" />}
