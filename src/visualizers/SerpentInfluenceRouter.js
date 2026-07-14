@@ -112,8 +112,9 @@ export class SerpentInfluenceRouter {
       const targetVolume = state.target > 0 ? (state.config.volume ?? 1) : 0;
       state.volume += (targetVolume - state.volume) * (1 - Math.exp(-3.4 * dt));
       const analyser = globalMixer.getTrackAnalyser(id);
+      const artReactivity = 0.72 + (state.config.trance ?? 0.5) * 1.38;
       state.features = analyser
-        ? state.extractor.update(analyser, dt, state.config.reactivity ?? 1)
+        ? state.extractor.update(analyser, dt, artReactivity)
         : (id === '__ambient' && fallbackFeatures ? fallbackFeatures : SILENCE);
       if (state.target === 0 && state.fade < 0.004) {
         this.states.delete(id);
@@ -129,7 +130,7 @@ export class SerpentInfluenceRouter {
       globalFlux += state.features.flux * gain;
       globalOnset = Math.max(globalOnset, state.features.onset * gain);
       const weight = Math.max(0.01, state.features.level) * gain;
-      hueTotal += (state.config.hue ?? 0) * weight;
+      hueTotal += (state.config.cosmic ?? 0.2) * 0.13 * weight;
       hueWeight += weight;
     }
 

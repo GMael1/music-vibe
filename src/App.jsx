@@ -12,7 +12,9 @@ function App() {
   const [tracks, setTracks] = useState([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLiveListening, setIsLiveListening] = useState(false);
-  const [liveStyle, setLiveStyle] = useState('serpent');
+  const [liveStyle, setLiveStyle] = useState('ritualCurrent');
+  const [liveTrance, setLiveTrance] = useState(0.5);
+  const [liveCosmic, setLiveCosmic] = useState(0.2);
   const [isRecording, setIsRecording] = useState(false);
   const [exportStatus, setExportStatus] = useState(null);
   const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false);
@@ -86,7 +88,7 @@ function App() {
     globalMixer.init();
     const audioBuffer = await globalMixer.decodeAudioData(arrayBuffer);
     const visualDefaults = {
-      visualStyle: 'serpent',
+      visualStyle: 'ritualCurrent',
       sceneRole: 'auto',
       position: 'background',
       opacity: 1,
@@ -97,8 +99,8 @@ function App() {
       name,
       ...visualDefaults,
       volume: 1.0,
-      reactivity: 1.0,
-      hue: 0.0,
+      trance: 0.5,
+      cosmic: 0.2,
       buffer: audioBuffer,
     };
 
@@ -329,10 +331,55 @@ function App() {
                   onChange={(e) => setLiveStyle(e.target.value)}
                   className="bg-black/50 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-gray-200 outline-none focus:border-primary"
                 >
+                  <option value="ritualCurrent">Experiment · Ritual Current</option>
+                  <option value="livingMandala">Experiment · Living Mandala</option>
+                  <option value="obsidianOrganism">Experiment · Obsidian Organism</option>
                   <option value="psychedelic">Fluid Field</option>
                   <option value="chladni">Resonance Plate</option>
                   <option value="serpent">Jungle Serpent</option>
                 </select>
+
+                <div className="mt-4">
+                  <label className="text-xs text-gray-400 mb-1 flex justify-between">
+                    <span>Journey</span>
+                    <span className="text-gray-500">
+                      {liveTrance < 0.45 ? 'Meditative' : (liveTrance > 0.55 ? 'Ecstatic' : 'Balanced')}
+                    </span>
+                  </label>
+                  <input
+                    type="range"
+                    aria-label="Live journey from meditative to ecstatic"
+                    min="0" max="1" step="0.01"
+                    value={liveTrance}
+                    onChange={(event) => setLiveTrance(parseFloat(event.target.value))}
+                    className="w-full h-1.5 rounded-lg appearance-none cursor-pointer"
+                    style={{ background: 'linear-gradient(to right, #30372f, #92704a, #ff5e8b)' }}
+                  />
+                  <div className="mt-1 flex justify-between text-[9px] uppercase tracking-wider text-gray-600">
+                    <span>Meditative</span><span>Ecstatic</span>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <label className="text-xs text-gray-400 mb-1 flex justify-between">
+                    <span>World</span>
+                    <span className="text-gray-500">
+                      {liveCosmic < 0.45 ? 'Dark & Earthy' : (liveCosmic > 0.55 ? 'Full Spectrum' : 'Transition')}
+                    </span>
+                  </label>
+                  <input
+                    type="range"
+                    aria-label="Live world from dark and earthy to full spectrum cosmic"
+                    min="0" max="1" step="0.01"
+                    value={liveCosmic}
+                    onChange={(event) => setLiveCosmic(parseFloat(event.target.value))}
+                    className="w-full h-1.5 rounded-lg appearance-none cursor-pointer"
+                    style={{ background: 'linear-gradient(to right, #070604, #5d3b16, #b16a25, #00b7a8, #7757ff, #ff3e98)' }}
+                  />
+                  <div className="mt-1 flex justify-between text-[9px] uppercase tracking-wider text-gray-600">
+                    <span>Earthy</span><span>Cosmic</span>
+                  </div>
+                </div>
                </div>
 
                <button 
@@ -420,7 +467,16 @@ function App() {
               {/* Background gradient hint */}
               <div className="absolute inset-0 bg-gradient-to-tr from-primary/10 via-transparent to-secondary/10 pointer-events-none" />
               
-              <Stage ref={stageRef} mode={mode} tracks={tracks} format={format} isLiveListening={isLiveListening} liveStyle={liveStyle} />
+              <Stage
+                ref={stageRef}
+                mode={mode}
+                tracks={tracks}
+                format={format}
+                isLiveListening={isLiveListening}
+                liveStyle={liveStyle}
+                liveTrance={liveTrance}
+                liveCosmic={liveCosmic}
+              />
            </div>
         </div>
 

@@ -6,6 +6,9 @@ import { getChladniMaterial } from './Chladni';
 import { ResonanceDirector } from './ResonanceDirector';
 import { getJungleSerpentMaterial } from './JungleSerpent';
 import { SerpentInfluenceRouter } from './SerpentInfluenceRouter';
+import { getRitualCurrentMaterial } from './RitualCurrent';
+import { getLivingMandalaMaterial } from './LivingMandala';
+import { getObsidianOrganismMaterial } from './ObsidianOrganism';
 
 const IDLE_FEATURES = {
   sub: 0.08,
@@ -122,15 +125,17 @@ export class VisualizerEngine {
     this.resize();
   }
 
-  updateTracks(tracks, mode, liveStyle) {
+  updateTracks(tracks, mode, liveStyle, liveDirection = {}) {
+    const liveTrance = liveDirection.trance ?? 0.5;
+    const liveCosmic = liveDirection.cosmic ?? 0.2;
     const idleTrack = {
       id: '__ambient',
-      visualStyle: mode === 'live' ? liveStyle : 'psychedelic',
+      visualStyle: mode === 'live' ? liveStyle : 'ritualCurrent',
       position: 'background',
       opacity: 0.7,
       blendMode: 'normal',
-      reactivity: 1,
-      hue: 0,
+      trance: liveTrance,
+      cosmic: liveCosmic,
     };
     const activeTracks = mode === 'live'
       ? (globalMixer.tracks.has('live') ? [{
@@ -139,8 +144,8 @@ export class VisualizerEngine {
           position: 'background',
           opacity: 1,
           blendMode: 'normal',
-          reactivity: 1.15,
-          hue: 0,
+          trance: liveTrance,
+          cosmic: liveCosmic,
         }] : [idleTrack])
       : (tracks.length > 0 ? tracks : [idleTrack]);
 
@@ -193,11 +198,13 @@ export class VisualizerEngine {
 
       const { track } = desired;
       obj.position = track.position;
-      obj.reactivity = track.reactivity ?? 1;
-      obj.hue = track.hue ?? 0;
+      obj.trance = track.trance ?? 0.5;
+      obj.cosmic = track.cosmic ?? 0.2;
+      obj.reactivity = 0.72 + obj.trance * 1.38;
+      obj.hue = obj.cosmic * 0.13;
       obj.opacity = track.opacity ?? 1;
       obj.mesh.renderOrder = serpentTracks.length > 0 ? 1 : 0;
-      obj.mesh.material.blending = track.blendMode === 'additive'
+      obj.mesh.material.blending = obj.style === 'ritualCurrent' || track.blendMode === 'additive'
         ? THREE.AdditiveBlending
         : THREE.NormalBlending;
       obj.mesh.material.needsUpdate = true;
@@ -243,10 +250,15 @@ export class VisualizerEngine {
 
   createVisualizer(style) {
     let data;
-    if (style === 'chladni') data = getChladniMaterial();
+    if (style === 'ritualCurrent') data = getRitualCurrentMaterial();
+    else if (style === 'livingMandala') data = getLivingMandalaMaterial();
+    else if (style === 'obsidianOrganism') data = getObsidianOrganismMaterial();
+    else if (style === 'chladni') data = getChladniMaterial();
     else data = getPsychedelicMaterial();
 
-    const mesh = new THREE.Mesh(data.geometry, data.material);
+    const mesh = data.objectType === 'points'
+      ? new THREE.Points(data.geometry, data.material)
+      : new THREE.Mesh(data.geometry, data.material);
     return { mesh, uniforms: data.uniforms, style, position: 'center' };
   }
 
@@ -336,9 +348,10 @@ export class VisualizerEngine {
         + features.spectralLow * 0.2
         + features.spectralMid * 0.28
         + features.spectralHigh * 0.17;
-      obj.visualTime += delta * (0.12 + movementEnergy * 1.65 + features.flux * 0.8);
-      obj.journey += delta * ((features.centroid + features.pitch) * 0.5 - 0.28) * 0.07
-        + features.onset * 0.012;
+      obj.visualTime += delta * (0.055 + obj.trance * 0.11
+        + movementEnergy * (0.32 + obj.trance * 0.62) + features.flux * 0.18);
+      obj.journey += delta * ((features.centroid + features.pitch) * 0.5 - 0.28)
+        * (0.025 + obj.trance * 0.045) + features.onset * (0.003 + obj.trance * 0.006);
 
       if (uniforms.uTime) uniforms.uTime.value = obj.visualTime;
       if (uniforms.uSub) uniforms.uSub.value = features.sub;
@@ -361,6 +374,8 @@ export class VisualizerEngine {
       if (uniforms.uTonality) uniforms.uTonality.value = features.tonality;
       if (uniforms.uJourney) uniforms.uJourney.value = obj.journey;
       if (uniforms.uHue) uniforms.uHue.value = obj.hue * Math.PI * 2;
+      if (uniforms.uTrance) uniforms.uTrance.value = obj.trance;
+      if (uniforms.uCosmic) uniforms.uCosmic.value = obj.cosmic;
       if (uniforms.uOpacity) uniforms.uOpacity.value = obj.opacity;
 
       if (obj.style === 'chladni') {

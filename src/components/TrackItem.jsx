@@ -19,6 +19,9 @@ export default function TrackItem({ track, onRemove, onUpdate }) {
             onChange={(e) => onUpdate(track.id, { visualStyle: e.target.value })}
             className="w-full bg-black/40 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-300 outline-none"
           >
+          <option value="ritualCurrent">Experiment · Ritual Current</option>
+          <option value="livingMandala">Experiment · Living Mandala</option>
+          <option value="obsidianOrganism">Experiment · Obsidian Organism</option>
           <option value="psychedelic">Fluid Field</option>
           <option value="chladni">Resonance Plate</option>
           <option value="serpent">Jungle Serpent</option>
@@ -99,45 +102,64 @@ export default function TrackItem({ track, onRemove, onUpdate }) {
             <span>Volume</span>
             <span>{Math.round(track.volume * 100)}%</span>
           </label>
-          <input 
-            type="range" 
-            min="0" max="1" step="0.01" 
+          <input
+            type="range"
+            min="0" max="1" step="0.01"
             value={track.volume}
             onChange={(e) => onUpdate(track.id, { volume: parseFloat(e.target.value) })}
             className="w-full accent-primary h-1 bg-black/50 rounded-lg appearance-none cursor-pointer"
           />
         </div>
-        {/* Reactivity Slider */}
+        {/* Artistic energy slider */}
         <div>
           <label className="text-xs text-gray-400 mb-1 flex justify-between">
-            <span>Reactivity</span>
-            <span>{Math.round((track.reactivity ?? 1.0) * 100)}%</span>
+            <span>Journey</span>
+            <span className="text-gray-500">
+              {(track.trance ?? 0.5) < 0.45
+                ? 'Meditative'
+                : ((track.trance ?? 0.5) > 0.55 ? 'Ecstatic' : 'Balanced')}
+            </span>
           </label>
-          <input 
-            type="range" 
-            min="0" max="3" step="0.1" 
-            value={track.reactivity ?? 1.0}
-            onChange={(e) => onUpdate(track.id, { reactivity: parseFloat(e.target.value) })}
-            className="w-full accent-secondary h-1 bg-black/50 rounded-lg appearance-none cursor-pointer"
-          />
-        </div>
-        
-        {/* Color Shift Slider */}
-        <div>
-          <label className="text-xs text-gray-400 mb-1 flex justify-between">
-            <span>Color Tone</span>
-            <span>{Math.round((track.hue ?? 0.0) * 360)}°</span>
-          </label>
-          <input 
-            type="range" 
-            min="0" max="1" step="0.01" 
-            value={track.hue ?? 0.0}
-            onChange={(e) => onUpdate(track.id, { hue: parseFloat(e.target.value) })}
+          <input
+            type="range"
+            aria-label="Journey from meditative to ecstatic"
+            min="0" max="1" step="0.01"
+            value={track.trance ?? 0.5}
+            onChange={(e) => onUpdate(track.id, { trance: parseFloat(e.target.value) })}
             className="w-full h-1.5 rounded-lg appearance-none cursor-pointer"
             style={{
-              background: 'linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)'
+              background: 'linear-gradient(to right, #30372f, #92704a, #ff5e8b)'
             }}
           />
+          <div className="mt-1 flex justify-between text-[9px] uppercase tracking-wider text-gray-600">
+            <span>Meditative</span><span>Ecstatic</span>
+          </div>
+        </div>
+        
+        {/* Artistic palette slider */}
+        <div>
+          <label className="text-xs text-gray-400 mb-1 flex justify-between">
+            <span>World</span>
+            <span className="text-gray-500">
+              {(track.cosmic ?? 0.2) < 0.45
+                ? 'Dark & Earthy'
+                : ((track.cosmic ?? 0.2) > 0.55 ? 'Full Spectrum' : 'Transition')}
+            </span>
+          </label>
+          <input 
+            type="range" 
+            aria-label="World from dark and earthy to full spectrum cosmic"
+            min="0" max="1" step="0.01" 
+            value={track.cosmic ?? 0.2}
+            onChange={(e) => onUpdate(track.id, { cosmic: parseFloat(e.target.value) })}
+            className="w-full h-1.5 rounded-lg appearance-none cursor-pointer"
+            style={{
+              background: 'linear-gradient(to right, #070604, #5d3b16, #b16a25, #00b7a8, #7757ff, #ff3e98)'
+            }}
+          />
+          <div className="mt-1 flex justify-between text-[9px] uppercase tracking-wider text-gray-600">
+            <span>Earthy</span><span>Cosmic</span>
+          </div>
         </div>
       </div>
     </div>
