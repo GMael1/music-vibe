@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import { globalMixer } from '../audio/Mixer';
 import { FeatureExtractor } from '../audio/FeatureExtractor';
 import { getPsychedelicMaterial } from './Psychedelic';
-import { getFireworksMaterial, updateFireworksGeometry } from './Fireworks';
 import { getChladniMaterial } from './Chladni';
 import { ResonanceDirector } from './ResonanceDirector';
+import { getJungleSerpentMaterial } from './JungleSerpent';
+import { SerpentInfluenceRouter } from './SerpentInfluenceRouter';
 
 const IDLE_FEATURES = {
   sub: 0.08,
@@ -72,6 +73,8 @@ export class VisualizerEngine {
     this.aspect = 1;
     this.isExporting = false;
     this.lastTime = performance.now() / 1000;
+    this.serpentDemo = import.meta.env.DEV
+      && new URLSearchParams(window.location.search).has('serpentDemo');
   }
 
   applySize(width, height, pixelRatio = 1) {
@@ -86,7 +89,12 @@ export class VisualizerEngine {
     this.camera.updateProjectionMatrix();
 
     for (const obj of this.objects.values()) {
-      this.setPosition(obj.mesh, obj.position);
+      if (obj.style === 'serpent') {
+        obj.mesh.scale.set(1, 1, 1);
+        obj.mesh.position.set(0, 0, 0);
+      } else {
+        this.setPosition(obj.mesh, obj.position);
+      }
       if (obj.uniforms.uAspect) obj.uniforms.uAspect.value = this.aspect;
       if (obj.uniforms.uPixelRatio) obj.uniforms.uPixelRatio.value = pixelRatio;
     }
@@ -131,40 +139,66 @@ export class VisualizerEngine {
         }] : [idleTrack])
       : (tracks.length > 0 ? tracks : [idleTrack]);
 
+    const serpentTracks = activeTracks.filter(track => track.visualStyle === 'serpent');
+    const desiredObjects = new Map();
+    if (serpentTracks.length > 0 || this.objects.has('__shared-serpent')) {
+      desiredObjects.set('__shared-serpent', { style: 'serpent', tracks: serpentTracks });
+    }
+    activeTracks
+      .filter(track => track.visualStyle !== 'serpent')
+      .forEach(track => desiredObjects.set(track.id, { style: track.visualStyle, track }));
+
     for (const [id, obj] of this.objects.entries()) {
-      const active = activeTracks.find(track => track.id === id);
-      if (!active || active.visualStyle !== obj.style) {
+      const desired = desiredObjects.get(id);
+      if (!desired || desired.style !== obj.style) {
         this.scene.remove(obj.mesh);
         obj.mesh.geometry.dispose();
         obj.mesh.material.dispose();
+        obj.router?.dispose();
         this.objects.delete(id);
       }
     }
 
-    activeTracks.forEach((track, index) => {
-      let obj = this.objects.get(track.id);
+    for (const [id, desired] of desiredObjects.entries()) {
+      let obj = this.objects.get(id);
       if (!obj) {
-        obj = this.createVisualizer(track.visualStyle);
-        obj.extractor = new FeatureExtractor(globalMixer.getTrackProfile(track.id));
-        obj.director = new ResonanceDirector(track.name ?? track.id);
+        obj = desired.style === 'serpent'
+          ? this.createSerpentVisualizer()
+          : this.createVisualizer(desired.style);
+        if (desired.track) {
+          obj.extractor = new FeatureExtractor(globalMixer.getTrackProfile(desired.track.id));
+          obj.director = new ResonanceDirector(desired.track.name ?? desired.track.id);
+        }
         obj.visualTime = 0;
         obj.journey = 0;
         this.scene.add(obj.mesh);
-        this.objects.set(track.id, obj);
+        this.objects.set(id, obj);
       }
 
+      if (desired.style === 'serpent') {
+        obj.tracks = desired.tracks;
+        obj.router.setTracks(desired.tracks);
+        obj.position = 'background';
+        obj.mesh.renderOrder = 0;
+        obj.mesh.scale.set(1, 1, 1);
+        obj.mesh.position.set(0, 0, 0);
+        if (obj.uniforms.uAspect) obj.uniforms.uAspect.value = this.aspect;
+        continue;
+      }
+
+      const { track } = desired;
       obj.position = track.position;
       obj.reactivity = track.reactivity ?? 1;
       obj.hue = track.hue ?? 0;
       obj.opacity = track.opacity ?? 1;
-      obj.mesh.renderOrder = index;
+      obj.mesh.renderOrder = serpentTracks.length > 0 ? 1 : 0;
       obj.mesh.material.blending = track.blendMode === 'additive'
         ? THREE.AdditiveBlending
-        : (obj.style === 'fireworks' ? THREE.AdditiveBlending : THREE.NormalBlending);
+        : THREE.NormalBlending;
       obj.mesh.material.needsUpdate = true;
       this.setPosition(obj.mesh, track.position);
       if (obj.uniforms.uAspect) obj.uniforms.uAspect.value = this.aspect;
-    });
+    }
   }
 
   setPosition(mesh, position = 'center') {
@@ -205,14 +239,23 @@ export class VisualizerEngine {
   createVisualizer(style) {
     let data;
     if (style === 'chladni') data = getChladniMaterial();
-    else if (style === 'fireworks') data = getFireworksMaterial();
     else data = getPsychedelicMaterial();
 
-    const mesh = data.isPoints
-      ? new THREE.Points(data.geometry, data.material)
-      : new THREE.Mesh(data.geometry, data.material);
-    if (data.isPoints) mesh.frustumCulled = false;
+    const mesh = new THREE.Mesh(data.geometry, data.material);
     return { mesh, uniforms: data.uniforms, style, position: 'center' };
+  }
+
+  createSerpentVisualizer() {
+    const router = new SerpentInfluenceRouter();
+    const data = getJungleSerpentMaterial(router.texture);
+    return {
+      mesh: new THREE.Mesh(data.geometry, data.material),
+      uniforms: data.uniforms,
+      router,
+      style: 'serpent',
+      position: 'background',
+      tracks: [],
+    };
   }
 
   start() {
@@ -234,6 +277,7 @@ export class VisualizerEngine {
     for (const obj of this.objects.values()) {
       obj.mesh.geometry.dispose();
       obj.mesh.material.dispose();
+      obj.router?.dispose();
     }
     this.objects.clear();
     this.renderer.dispose();
@@ -245,6 +289,21 @@ export class VisualizerEngine {
     this.lastTime = time;
 
     for (const [id, obj] of this.objects.entries()) {
+      if (obj.style === 'serpent') {
+        const demoFeatures = this.serpentDemo ? getIdleFeatures(time) : null;
+        const summary = obj.router.update(delta, demoFeatures);
+        obj.visualTime += delta * (0.04 + summary.level * 1.45 + summary.flux * 0.7);
+        obj.uniforms.uTime.value = obj.visualTime;
+        obj.uniforms.uLevel.value = summary.level;
+        obj.uniforms.uBass.value = summary.bass;
+        obj.uniforms.uMid.value = summary.mid;
+        obj.uniforms.uHigh.value = summary.high;
+        obj.uniforms.uFlux.value = summary.flux;
+        obj.uniforms.uOnset.value = summary.onset;
+        obj.uniforms.uHue.value = summary.hue;
+        continue;
+      }
+
       const analyser = globalMixer.getTrackAnalyser(id);
       const features = analyser
         ? obj.extractor.update(analyser, delta, obj.reactivity)
@@ -297,9 +356,6 @@ export class VisualizerEngine {
         uniforms.uFamilyMix.value = resonance.mix;
       }
 
-      if (obj.style === 'fireworks') {
-        updateFireworksGeometry(obj.mesh.geometry, features, delta);
-      }
     }
 
     this.renderer.render(this.scene, this.camera);

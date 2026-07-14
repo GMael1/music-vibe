@@ -21,11 +21,33 @@ export default function TrackItem({ track, onRemove, onUpdate }) {
           >
           <option value="psychedelic">Fluid Field</option>
           <option value="chladni">Resonance Plate</option>
-          <option value="fireworks">Particle Bloom</option>
+          <option value="serpent">Jungle Serpent</option>
         </select>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
+        {track.visualStyle === 'serpent' ? (
+          <div>
+            <label className="text-xs text-gray-400 mb-1 block">Scene Influence</label>
+            <select
+              value={track.sceneRole ?? 'auto'}
+              onChange={(e) => onUpdate(track.id, { sceneRole: e.target.value })}
+              className="w-full bg-black/30 border border-white/10 rounded-md text-xs p-1.5 outline-none"
+            >
+              <option value="auto">Auto — balanced role</option>
+              <option value="motion">Body motion</option>
+              <option value="skin">Skin patterns</option>
+              <option value="energy">Emissive energy</option>
+              <option value="light">Lighting</option>
+              <option value="atmosphere">Atmosphere</option>
+              <option value="accent">Transient accents</option>
+            </select>
+            <p className="mt-1 text-[10px] leading-relaxed text-gray-500">
+              Shared smoothly along a stable section of the serpent.
+            </p>
+          </div>
+        ) : (
+          <>
+          <div className="grid grid-cols-2 gap-2">
           <div>
             <label className="text-xs text-gray-400 mb-1 block">Blend</label>
             <select
@@ -68,6 +90,8 @@ export default function TrackItem({ track, onRemove, onUpdate }) {
             <option value="bottom-right">Bottom Right</option>
           </select>
         </div>
+          </>
+        )}
 
         {/* Volume Slider */}
         <div>

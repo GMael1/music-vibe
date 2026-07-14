@@ -1,4 +1,4 @@
-import { profileAudioBuffer } from './TrackProfiler';
+import { profileAudioBuffer } from './TrackProfiler.js';
 
 export class Mixer {
   constructor() {

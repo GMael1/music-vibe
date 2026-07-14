@@ -12,7 +12,7 @@ function App() {
   const [tracks, setTracks] = useState([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLiveListening, setIsLiveListening] = useState(false);
-  const [liveStyle, setLiveStyle] = useState('psychedelic');
+  const [liveStyle, setLiveStyle] = useState('serpent');
   const [isRecording, setIsRecording] = useState(false);
   const [exportStatus, setExportStatus] = useState(null);
   
@@ -81,11 +81,13 @@ function App() {
       const arrayBuffer = await file.arrayBuffer();
       const audioBuffer = await globalMixer.decodeAudioData(arrayBuffer);
       
-      const visualDefaults = [
-        { visualStyle: 'psychedelic', position: 'background', opacity: 1, blendMode: 'normal' },
-        { visualStyle: 'chladni', position: 'center', opacity: 0.88, blendMode: 'normal' },
-        { visualStyle: 'fireworks', position: 'center', opacity: 0.95, blendMode: 'additive' },
-      ][tracks.length % 3];
+      const visualDefaults = {
+        visualStyle: 'serpent',
+        sceneRole: 'auto',
+        position: 'background',
+        opacity: 1,
+        blendMode: 'normal',
+      };
       const newTrack = {
         id: `track-${crypto.randomUUID?.() ?? Date.now()}`,
         name: file.name,
@@ -271,7 +273,7 @@ function App() {
                 >
                   <option value="psychedelic">Fluid Field</option>
                   <option value="chladni">Resonance Plate</option>
-                  <option value="fireworks">Particle Bloom</option>
+                  <option value="serpent">Jungle Serpent</option>
                 </select>
                </div>
 
