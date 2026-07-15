@@ -12,7 +12,7 @@ AudioViz Studio is a local-first browser performance tool for creating modern, s
 - Whole-track spectral profiling plus adaptive live musical analysis
 - Five smoothly crossfaded Resonance Plate families with phrase-aware visual direction
 - Smoothed multi-band analysis with pitch, timbre, beat, and onset detection
-- 1920×1080 landscape and 1080×1920 portrait export at 60 FPS
+- Quick real-time export plus deterministic high-quality WebCodecs export at 1920×1080 or 1080×1920 and 30 FPS
 - Local processing with no uploads or account required
 
 ## Development

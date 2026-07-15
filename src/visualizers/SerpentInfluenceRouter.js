@@ -94,7 +94,7 @@ export class SerpentInfluenceRouter {
     });
   }
 
-  update(delta, fallbackFeatures = null) {
+  update(delta, fallbackFeatures = null, getAnalyser = id => globalMixer.getTrackAnalyser(id)) {
     const dt = Math.max(1 / 240, Math.min(delta, 0.1));
     const activeStates = [];
     let globalLevel = 0;
@@ -111,7 +111,7 @@ export class SerpentInfluenceRouter {
       state.fade += (state.target - state.fade) * (1 - Math.exp(-fadeSpeed * dt));
       const targetVolume = state.target > 0 ? (state.config.volume ?? 1) : 0;
       state.volume += (targetVolume - state.volume) * (1 - Math.exp(-3.4 * dt));
-      const analyser = globalMixer.getTrackAnalyser(id);
+      const analyser = getAnalyser(id);
       const artReactivity = 0.72 + (state.config.trance ?? 0.5) * 1.38;
       state.features = analyser
         ? state.extractor.update(analyser, dt, artReactivity)

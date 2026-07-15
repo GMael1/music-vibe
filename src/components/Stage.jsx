@@ -12,11 +12,17 @@ const Stage = forwardRef(function Stage(
     get canvas() {
       return canvasRef.current;
     },
-    setExportResolution(width, height) {
-      engineRef.current?.setExportResolution(width, height);
+    setExportResolution(width, height, frameRate) {
+      engineRef.current?.setExportResolution(width, height, frameRate);
     },
     restorePreviewResolution() {
       engineRef.current?.restorePreviewResolution();
+    },
+    pauseRendering() {
+      engineRef.current?.stop();
+    },
+    resumeRendering() {
+      engineRef.current?.start();
     },
   }), []);
 

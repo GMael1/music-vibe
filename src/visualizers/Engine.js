@@ -65,9 +65,14 @@ function getIdleFeatures(time) {
 }
 
 export class VisualizerEngine {
-  constructor(canvas) {
+  constructor(canvas, options = {}) {
     this.canvas = canvas;
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+    this.renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: false,
+      preserveDrawingBuffer: options.preserveDrawingBuffer ?? false,
+    });
     this.renderer.setClearColor(0x02030b, 1);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -80,6 +85,8 @@ export class VisualizerEngine {
     this.rafId = null;
     this.aspect = 1;
     this.isExporting = false;
+    this.exportFrameInterval = 0;
+    this.lastRenderTimestamp = null;
     this.lastTime = performance.now() / 1000;
     this.serpentDemo = import.meta.env.DEV
       && new URLSearchParams(window.location.search).has('serpentDemo');
@@ -115,13 +122,17 @@ export class VisualizerEngine {
     this.applySize(parent.clientWidth, parent.clientHeight, pixelRatio);
   }
 
-  setExportResolution(width, height) {
+  setExportResolution(width, height, frameRate = 30) {
     this.isExporting = true;
+    this.exportFrameInterval = 1000 / frameRate;
+    this.lastRenderTimestamp = null;
     this.applySize(width, height, 1);
   }
 
   restorePreviewResolution() {
     this.isExporting = false;
+    this.exportFrameInterval = 0;
+    this.lastRenderTimestamp = null;
     this.resize();
   }
 
@@ -286,11 +297,15 @@ export class VisualizerEngine {
 
   start() {
     if (this.rafId) return;
-    const animate = () => {
+    const animate = (timestamp) => {
       this.rafId = requestAnimationFrame(animate);
-      this.render();
+      if (!this.exportFrameInterval || this.lastRenderTimestamp === null
+        || timestamp - this.lastRenderTimestamp + 0.5 >= this.exportFrameInterval) {
+        this.render();
+        this.lastRenderTimestamp = timestamp;
+      }
     };
-    animate();
+    this.rafId = requestAnimationFrame(animate);
   }
 
   stop() {
@@ -313,11 +328,19 @@ export class VisualizerEngine {
     const time = performance.now() / 1000;
     const delta = Math.min(time - this.lastTime, 0.1);
     this.lastTime = time;
+    this.renderFrame(time, delta, id => globalMixer.getTrackAnalyser(id));
+  }
+
+  renderOfflineFrame(time, delta, getAnalyser) {
+    this.renderFrame(time, delta, getAnalyser);
+  }
+
+  renderFrame(time, delta, getAnalyser) {
 
     for (const [id, obj] of this.objects.entries()) {
       if (obj.style === 'serpent') {
         const demoFeatures = this.serpentDemo ? getIdleFeatures(time) : null;
-        const summary = obj.router.update(delta, demoFeatures);
+        const summary = obj.router.update(delta, demoFeatures, getAnalyser);
         const smooth = obj.smoothAudio;
         smooth.level = dampAudioValue(smooth.level, summary.level, delta, 2.4, 1.05);
         smooth.bass = dampAudioValue(smooth.bass, summary.bass, delta, 2.0, 0.9);
@@ -338,7 +361,7 @@ export class VisualizerEngine {
         continue;
       }
 
-      const analyser = globalMixer.getTrackAnalyser(id);
+      const analyser = getAnalyser(id);
       const features = analyser
         ? obj.extractor.update(analyser, delta, obj.reactivity)
         : getIdleFeatures(time);

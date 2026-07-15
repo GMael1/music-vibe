@@ -1,4 +1,4 @@
-const FFT_SIZE = 2048;
+export const FFT_SIZE = 2048;
 const MAX_FRAMES = 120;
 
 function percentile(values, amount) {
@@ -7,7 +7,7 @@ function percentile(values, amount) {
   return sorted[Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * amount))];
 }
 
-function fftMagnitudes(samples) {
+export function fftMagnitudes(samples) {
   const real = new Float64Array(FFT_SIZE);
   const imaginary = new Float64Array(FFT_SIZE);
 
