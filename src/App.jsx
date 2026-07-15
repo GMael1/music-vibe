@@ -319,7 +319,7 @@ function App() {
     }
   };
 
-  const canQuickExport = tracks.length > 0 || isLiveListening;
+  const canQuickExport = mode === 'multi' ? tracks.length > 0 : isLiveListening;
   const canOfflineExport = mode === 'multi' && tracks.length > 0;
 
   return (
@@ -561,6 +561,7 @@ function App() {
              <button
                className={`export-button glass-button !py-1.5 !px-4 text-sm font-medium ${isOfflineExporting ? 'bg-red-500/20 text-red-300 border-red-500/40 hover:bg-red-500/30' : 'bg-secondary/10 text-secondary border-secondary/40 hover:bg-secondary/20'}`}
                onClick={toggleOfflineExport}
+               aria-label={isOfflineExporting ? t('app.cancelHighQualityExport') : t('app.highQualityExport')}
                disabled={(!canOfflineExport && !isOfflineExporting) || isRecording}
                title={mode === 'live'
                  ? t('app.offlineLiveDisabled')

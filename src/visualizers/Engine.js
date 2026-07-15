@@ -1,14 +1,14 @@
 import * as THREE from 'three';
-import { globalMixer } from '../audio/Mixer';
-import { FeatureExtractor } from '../audio/FeatureExtractor';
-import { getPsychedelicMaterial } from './Psychedelic';
-import { getChladniMaterial } from './Chladni';
-import { ResonanceDirector } from './ResonanceDirector';
-import { getJungleSerpentMaterial } from './JungleSerpent';
-import { SerpentInfluenceRouter } from './SerpentInfluenceRouter';
-import { getRitualCurrentMaterial } from './RitualCurrent';
-import { getLivingMandalaMaterial } from './LivingMandala';
-import { getObsidianOrganismMaterial } from './ObsidianOrganism';
+import { globalMixer } from '../audio/Mixer.js';
+import { FeatureExtractor } from '../audio/FeatureExtractor.js';
+import { getPsychedelicMaterial } from './Psychedelic.js';
+import { getChladniMaterial } from './Chladni.js';
+import { ResonanceDirector } from './ResonanceDirector.js';
+import { getJungleSerpentMaterial } from './JungleSerpent.js';
+import { SerpentInfluenceRouter } from './SerpentInfluenceRouter.js';
+import { getRitualCurrentMaterial } from './RitualCurrent.js';
+import { getLivingMandalaMaterial } from './LivingMandala.js';
+import { getObsidianOrganismMaterial } from './ObsidianOrganism.js';
 
 const IDLE_FEATURES = {
   sub: 0.08,

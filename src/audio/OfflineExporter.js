@@ -32,17 +32,24 @@ export function getOfflineExportDuration(tracks) {
   return tracks.reduce((duration, track) => Math.max(duration, track.buffer?.duration ?? 0), 0);
 }
 
-export async function chooseOfflineExportFormat({ width, height, sampleRate, channelCount }) {
+export async function chooseOfflineExportFormat({
+  width,
+  height,
+  sampleRate,
+  channelCount,
+  supportsVideo = canEncodeVideo,
+  supportsAudio = canEncodeAudio,
+}) {
   for (const candidate of EXPORT_CANDIDATES) {
     try {
       const [videoSupported, audioSupported] = await Promise.all([
-        canEncodeVideo(candidate.videoCodec, {
+        supportsVideo(candidate.videoCodec, {
           width,
           height,
           bitrate: OFFLINE_EXPORT_PROFILE.videoBitsPerSecond,
           latencyMode: 'quality',
         }),
-        canEncodeAudio(candidate.audioCodec, {
+        supportsAudio(candidate.audioCodec, {
           sampleRate,
           numberOfChannels: channelCount,
           bitrate: OFFLINE_EXPORT_PROFILE.audioBitsPerSecond,
