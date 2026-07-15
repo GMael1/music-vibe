@@ -1,27 +1,13 @@
 import * as THREE from 'three';
+import {
+  createJourneyUniforms,
+  LAYER_MASK_GLSL,
+  LAYER_MASK_UNIFORMS,
+} from './JourneyUniforms.js';
 
 export function getChladniMaterial() {
   const uniforms = {
-    uTime: { value: 0 },
-    uJourney: { value: 0 },
-    uSub: { value: 0 },
-    uBass: { value: 0 },
-    uLowMid: { value: 0 },
-    uMid: { value: 0 },
-    uHighMid: { value: 0 },
-    uTreble: { value: 0 },
-    uSpectralLow: { value: 0 },
-    uSpectralMid: { value: 0 },
-    uSpectralHigh: { value: 0 },
-    uLevel: { value: 0 },
-    uBeat: { value: 0 },
-    uOnset: { value: 0 },
-    uFlux: { value: 0 },
-    uCentroid: { value: 0 },
-    uPitch: { value: 0.5 },
-    uAbsolutePitch: { value: 0.3 },
-    uSpread: { value: 0 },
-    uTonality: { value: 0.5 },
+    ...createJourneyUniforms(),
     uFamilyA: { value: 0 },
     uFamilyB: { value: 0 },
     uModeAX: { value: 3 },
@@ -33,10 +19,8 @@ export function getChladniMaterial() {
     uSeedA: { value: 0 },
     uSeedB: { value: 0 },
     uFamilyMix: { value: 0 },
-    uHue: { value: 0 },
-    uOpacity: { value: 0.94 },
-    uAspect: { value: 1 },
   };
+  uniforms.uOpacity.value = 0.94;
 
   const vertexShader = `
     varying vec2 vUv;
@@ -81,7 +65,10 @@ export function getChladniMaterial() {
     uniform float uHue;
     uniform float uOpacity;
     uniform float uAspect;
+    ${LAYER_MASK_UNIFORMS}
     varying vec2 vUv;
+
+    ${LAYER_MASK_GLSL}
 
     mat2 rotate2d(float angle) {
       float s = sin(angle);
@@ -158,7 +145,8 @@ export function getChladniMaterial() {
     }
 
     vec2 fluidWarp(vec2 p) {
-      float flow = 0.014 + uSpectralMid * 0.052 + uSpread * 0.035 + uFlux * 0.09;
+      float flow = 0.006 + (uSpectralMid * 0.052 + uSpread * 0.035
+        + uFlux * 0.09) * mix(0.12, 1.0, uEnergy);
       vec2 curl = vec2(
         noise(p * (1.8 + uSpectralMid * 1.7) + vec2(uTime * 0.32, uJourney * 3.0)),
         noise(p * (2.1 + uSpectralHigh * 1.9) - vec2(uJourney * 2.0, uTime * 0.27))
@@ -173,8 +161,10 @@ export function getChladniMaterial() {
       float field = mix(familyA, familyB, familyBlend);
 
       float bassWave = sin(length(p) * (7.0 + uSpectralLow * 10.0) - uTime * 2.2);
-      float impactWave = sin(length(p) * (18.0 + uSpread * 12.0) - uTime * 8.0) * uOnset;
-      field += bassWave * uSpectralLow * 0.16 + impactWave * 0.25;
+      float impactWave = sin(length(p) * (18.0 + uSpread * 12.0) - uTime * 8.0)
+        * uOnset * mix(0.08, 1.0, uEnergy);
+      field += bassWave * uSpectralLow * mix(0.035, 0.16, uEnergy)
+        + impactWave * 0.25;
       return field;
     }
 
@@ -204,7 +194,8 @@ export function getChladniMaterial() {
       vec2 gradient = normalize(vec2(density - densityX, density - densityY) + vec2(0.00001));
       vec2 tangent = vec2(-gradient.y, gradient.x);
 
-      float grainTravel = uTime * (1.6 + uFlux * 5.5 + uSpectralMid * 2.2);
+      float grainTravel = uTime * (0.22 + uEnergy * 1.38
+        + (uFlux * 5.5 + uSpectralMid * 2.2) * mix(0.08, 1.0, uEnergy));
       vec2 grainGrid = floor(vUv * vec2(1900.0, 1080.0) + warpedP * 19.0 + tangent * grainTravel);
       float grainRandom = hash21(grainGrid);
       float grainThreshold = 0.76 - density * (0.5 + uSpectralHigh * 0.18);
@@ -239,7 +230,7 @@ export function getChladniMaterial() {
       float outerGlow = exp(-abs(length(plateUv) - 0.83) * 12.0) * 0.04;
       color *= 0.64 + vignette * 0.48;
       color += alienCyan * outerGlow * (0.2 + uLevel);
-      gl_FragColor = vec4(color, uOpacity);
+      gl_FragColor = vec4(color, uOpacity * luminousLayerCoverage(color, vUv));
     }
   `;
 

@@ -9,6 +9,10 @@ import { SerpentInfluenceRouter } from './SerpentInfluenceRouter.js';
 import { getRitualCurrentMaterial } from './RitualCurrent.js';
 import { getLivingMandalaMaterial } from './LivingMandala.js';
 import { getObsidianOrganismMaterial } from './ObsidianOrganism.js';
+import {
+  getJourneyDynamics,
+  getLayerMaskConfig,
+} from './VisualDynamics.js';
 
 const IDLE_FEATURES = {
   sub: 0.08,
@@ -34,6 +38,44 @@ const IDLE_FEATURES = {
 function dampAudioValue(current, target, delta, attack, release) {
   const speed = target > current ? attack : release;
   return current + (target - current) * (1 - Math.exp(-speed * delta));
+}
+
+const SMOOTHED_FEATURES = [
+  'sub', 'bass', 'lowMid', 'mid', 'highMid', 'treble',
+  'spectralLow', 'spectralMid', 'spectralHigh', 'level',
+  'centroid', 'pitch', 'absolutePitch', 'spread', 'tonality',
+  'flux', 'beat', 'onset',
+];
+
+function smoothJourneyFeatures(obj, features, delta, dynamics) {
+  if (!obj.journeyFeatures) obj.journeyFeatures = { ...features };
+  const output = { ...features };
+  for (const key of SMOOTHED_FEATURES) {
+    if (features[key] === undefined) continue;
+    let target = features[key];
+    if (key === 'beat' || key === 'onset') target *= dynamics.onsetScale;
+    if (key === 'flux') target *= 0.22 + dynamics.energy * 0.78;
+    const current = obj.journeyFeatures[key] ?? target;
+    output[key] = dampAudioValue(
+      current,
+      target,
+      delta,
+      dynamics.audioAttack,
+      dynamics.audioRelease,
+    );
+  }
+  obj.journeyFeatures = output;
+  return output;
+}
+
+function visualSeed(value) {
+  let hash = 2166136261;
+  const text = String(value);
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 4294967295;
 }
 
 function getIdleFeatures(time) {
@@ -88,6 +130,7 @@ export class VisualizerEngine {
     this.exportFrameInterval = 0;
     this.lastRenderTimestamp = null;
     this.lastTime = performance.now() / 1000;
+    this.manualTime = this.lastTime;
     this.serpentDemo = import.meta.env.DEV
       && new URLSearchParams(window.location.search).has('serpentDemo');
   }
@@ -109,6 +152,7 @@ export class VisualizerEngine {
         obj.mesh.position.set(0, 0, 0);
       } else {
         this.setPosition(obj.mesh, obj.position);
+        this.configureLayerMask(obj, obj.position);
       }
       if (obj.uniforms.uAspect) obj.uniforms.uAspect.value = this.aspect;
       if (obj.uniforms.uPixelRatio) obj.uniforms.uPixelRatio.value = pixelRatio;
@@ -192,6 +236,11 @@ export class VisualizerEngine {
         }
         obj.visualTime = 0;
         obj.journey = 0;
+        obj.targetTrance = desired.track?.trance ?? 0.5;
+        obj.trance = obj.targetTrance;
+        obj.targetCosmic = desired.track?.cosmic ?? 0.2;
+        obj.cosmic = obj.targetCosmic;
+        obj.blendSeed = visualSeed(id);
         this.scene.add(obj.mesh);
         this.objects.set(id, obj);
       }
@@ -199,6 +248,14 @@ export class VisualizerEngine {
       if (desired.style === 'serpent') {
         obj.tracks = desired.tracks;
         obj.router.setTracks(desired.tracks);
+        obj.targetTrance = desired.tracks.length > 0
+          ? desired.tracks.reduce((total, track) => total + (track.trance ?? 0.5), 0)
+            / desired.tracks.length
+          : liveTrance;
+        obj.targetCosmic = desired.tracks.length > 0
+          ? desired.tracks.reduce((total, track) => total + (track.cosmic ?? 0.2), 0)
+            / desired.tracks.length
+          : liveCosmic;
         obj.position = 'background';
         obj.mesh.renderOrder = 0;
         obj.mesh.scale.set(1, 1, 1);
@@ -209,10 +266,10 @@ export class VisualizerEngine {
 
       const { track } = desired;
       obj.position = track.position;
-      obj.trance = track.trance ?? 0.5;
-      obj.cosmic = track.cosmic ?? 0.2;
-      obj.reactivity = 0.72 + obj.trance * 1.38;
-      obj.hue = obj.cosmic * 0.13;
+      obj.targetTrance = track.trance ?? 0.5;
+      obj.targetCosmic = track.cosmic ?? 0.2;
+      obj.reactivity = 0.72 + obj.targetTrance * 1.38;
+      obj.hue = obj.targetCosmic * 0.13;
       obj.opacity = track.opacity ?? 1;
       obj.mesh.renderOrder = serpentTracks.length > 0 ? 1 : 0;
       obj.mesh.material.blending = obj.style === 'ritualCurrent' || track.blendMode === 'additive'
@@ -220,43 +277,24 @@ export class VisualizerEngine {
         : THREE.NormalBlending;
       obj.mesh.material.needsUpdate = true;
       this.setPosition(obj.mesh, track.position);
+      this.configureLayerMask(obj, track.position);
       if (obj.uniforms.uAspect) obj.uniforms.uAspect.value = this.aspect;
     }
   }
 
   setPosition(mesh, position = 'center') {
-    const paddingX = 0.12;
-    const paddingY = 0.12;
-    const quadWidth = this.aspect - paddingX * 1.5;
-    const quadHeight = 1 - paddingY * 1.5;
+    void position;
+    mesh.scale.set(this.aspect * 2.02, 2.02, 1);
+    mesh.position.set(0, 0, 0);
+  }
 
-    switch (position) {
-      case 'top-left':
-        mesh.scale.set(quadWidth, quadHeight, 1);
-        mesh.position.set(-this.aspect / 2, 0.5, 0);
-        break;
-      case 'top-right':
-        mesh.scale.set(quadWidth, quadHeight, 1);
-        mesh.position.set(this.aspect / 2, 0.5, 0);
-        break;
-      case 'bottom-left':
-        mesh.scale.set(quadWidth, quadHeight, 1);
-        mesh.position.set(-this.aspect / 2, -0.5, 0);
-        break;
-      case 'bottom-right':
-        mesh.scale.set(quadWidth, quadHeight, 1);
-        mesh.position.set(this.aspect / 2, -0.5, 0);
-        break;
-      case 'background':
-        mesh.scale.set(this.aspect * 2.02, 2.02, 1);
-        mesh.position.set(0, 0, 0);
-        break;
-      case 'center':
-      default:
-        mesh.scale.set(Math.min(this.aspect * 1.55, 1.75), 1.55, 1);
-        mesh.position.set(0, 0, 0);
-        break;
-    }
+  configureLayerMask(obj, position = 'center') {
+    const config = getLayerMaskConfig(position);
+    const uniforms = obj.uniforms;
+    uniforms.uLayerAnchor?.value.set(config.anchor[0], config.anchor[1]);
+    if (uniforms.uLayerRadius) uniforms.uLayerRadius.value = config.radius;
+    if (uniforms.uLayerFeather) uniforms.uLayerFeather.value = config.feather;
+    if (uniforms.uBlendSeed) uniforms.uBlendSeed.value = obj.blendSeed ?? 0;
   }
 
   createVisualizer(style) {
@@ -279,6 +317,7 @@ export class VisualizerEngine {
     return {
       mesh: new THREE.Mesh(data.geometry, data.material),
       uniforms: data.uniforms,
+      field: data.field,
       router,
       style: 'serpent',
       position: 'background',
@@ -291,7 +330,10 @@ export class VisualizerEngine {
         flux: 0,
         onset: 0,
         hue: 0,
+        trance: 0.5,
+        cosmic: 0.2,
       },
+      travelTime: 0,
     };
   }
 
@@ -335,6 +377,34 @@ export class VisualizerEngine {
     this.renderFrame(time, delta, getAnalyser);
   }
 
+  advanceTime(milliseconds) {
+    const steps = Math.max(1, Math.round(milliseconds / (1000 / 60)));
+    for (let index = 0; index < steps; index += 1) {
+      this.manualTime += 1 / 60;
+      this.renderFrame(this.manualTime, 1 / 60, id => globalMixer.getTrackAnalyser(id));
+    }
+  }
+
+  getDebugState() {
+    return {
+      coordinateSystem: 'origin=center; +x right; +y up; viewport x is aspect-scaled',
+      aspect: this.aspect,
+      layers: [...this.objects.entries()].map(([id, obj]) => ({
+        id,
+        style: obj.style,
+        position: obj.position,
+        journey: Number((obj.trance ?? obj.smoothAudio?.trance ?? 0.5).toFixed(3)),
+        visualTime: Number((obj.visualTime ?? 0).toFixed(3)),
+        serpentTravel: obj.style === 'serpent'
+          ? Number((obj.travelTime ?? 0).toFixed(3))
+          : undefined,
+        serpentDirection: obj.style === 'serpent'
+          ? Number((obj.field?.angle ?? 0).toFixed(3))
+          : undefined,
+      })),
+    };
+  }
+
   renderFrame(time, delta, getAnalyser) {
 
     for (const [id, obj] of this.objects.entries()) {
@@ -342,15 +412,34 @@ export class VisualizerEngine {
         const demoFeatures = this.serpentDemo ? getIdleFeatures(time) : null;
         const summary = obj.router.update(delta, demoFeatures, getAnalyser);
         const smooth = obj.smoothAudio;
-        smooth.level = dampAudioValue(smooth.level, summary.level, delta, 2.4, 1.05);
-        smooth.bass = dampAudioValue(smooth.bass, summary.bass, delta, 2.0, 0.9);
-        smooth.mid = dampAudioValue(smooth.mid, summary.mid, delta, 2.6, 1.05);
-        smooth.high = dampAudioValue(smooth.high, summary.high, delta, 3.2, 1.25);
-        smooth.flux = dampAudioValue(smooth.flux, summary.flux, delta, 2.5, 1.1);
-        smooth.onset = dampAudioValue(smooth.onset, summary.onset, delta, 5.0, 1.55);
+        smooth.trance = dampAudioValue(
+          smooth.trance,
+          summary.trance ?? obj.targetTrance ?? 0.5,
+          delta,
+          0.9,
+          0.9,
+        );
+        smooth.cosmic = dampAudioValue(
+          smooth.cosmic,
+          summary.cosmic ?? obj.targetCosmic ?? 0.2,
+          delta,
+          0.75,
+          0.75,
+        );
+        const dynamics = getJourneyDynamics(smooth.trance);
+        smooth.level = dampAudioValue(smooth.level, summary.level, delta, dynamics.audioAttack, dynamics.audioRelease);
+        smooth.bass = dampAudioValue(smooth.bass, summary.bass, delta, dynamics.audioAttack, dynamics.audioRelease);
+        smooth.mid = dampAudioValue(smooth.mid, summary.mid, delta, dynamics.audioAttack, dynamics.audioRelease);
+        smooth.high = dampAudioValue(smooth.high, summary.high, delta, dynamics.audioAttack, dynamics.audioRelease);
+        smooth.flux = dampAudioValue(smooth.flux, summary.flux * dynamics.structureScale, delta, dynamics.audioAttack, dynamics.audioRelease);
+        smooth.onset = dampAudioValue(smooth.onset, summary.onset * dynamics.onsetScale, delta, dynamics.audioAttack * 1.4, dynamics.audioRelease);
         smooth.hue = dampAudioValue(smooth.hue, summary.hue, delta, 1.2, 1.2);
-        obj.visualTime += delta * (0.026 + smooth.level * 0.11 + smooth.flux * 0.055);
+        obj.visualTime += delta * (0.018 + dynamics.energy * 0.08
+          + smooth.level * (0.025 + dynamics.energy * 0.16));
+        obj.travelTime += delta * (0.08 + dynamics.energy * 0.42)
+          * (0.8 + smooth.bass * 0.22);
         obj.uniforms.uTime.value = obj.visualTime;
+        if (obj.uniforms.uTravelTime) obj.uniforms.uTravelTime.value = obj.travelTime;
         obj.uniforms.uLevel.value = smooth.level;
         obj.uniforms.uBass.value = smooth.bass;
         obj.uniforms.uMid.value = smooth.mid;
@@ -358,23 +447,33 @@ export class VisualizerEngine {
         obj.uniforms.uFlux.value = smooth.flux;
         obj.uniforms.uOnset.value = smooth.onset;
         obj.uniforms.uHue.value = smooth.hue;
+        if (obj.uniforms.uTrance) obj.uniforms.uTrance.value = smooth.trance;
+        if (obj.uniforms.uCalm) obj.uniforms.uCalm.value = dynamics.calm;
+        if (obj.uniforms.uEnergy) obj.uniforms.uEnergy.value = dynamics.energy;
+        if (obj.uniforms.uCosmic) obj.uniforms.uCosmic.value = smooth.cosmic;
         continue;
       }
 
+      obj.trance = dampAudioValue(obj.trance, obj.targetTrance, delta, 0.85, 0.85);
+      obj.cosmic = dampAudioValue(obj.cosmic, obj.targetCosmic, delta, 0.7, 0.7);
+      const dynamics = getJourneyDynamics(obj.trance);
       const analyser = getAnalyser(id);
-      const features = analyser
-        ? obj.extractor.update(analyser, delta, obj.reactivity)
+      const rawFeatures = analyser
+        ? obj.extractor.update(analyser, delta, 0.55 + dynamics.energy * 1.55)
         : getIdleFeatures(time);
+      const features = smoothJourneyFeatures(obj, rawFeatures, delta, dynamics);
       const uniforms = obj.uniforms;
 
       const movementEnergy = features.level * 0.35
         + features.spectralLow * 0.2
         + features.spectralMid * 0.28
         + features.spectralHigh * 0.17;
-      obj.visualTime += delta * (0.055 + obj.trance * 0.11
-        + movementEnergy * (0.32 + obj.trance * 0.62) + features.flux * 0.18);
+      obj.visualTime += delta * (0.018 + dynamics.energy * 0.12
+        + movementEnergy * (0.035 + dynamics.energy * 0.65)
+        + features.flux * 0.18 * dynamics.energy);
       obj.journey += delta * ((features.centroid + features.pitch) * 0.5 - 0.28)
-        * (0.025 + obj.trance * 0.045) + features.onset * (0.003 + obj.trance * 0.006);
+        * (0.006 + dynamics.energy * 0.064)
+        + features.onset * (0.0005 + dynamics.energy * 0.008);
 
       if (uniforms.uTime) uniforms.uTime.value = obj.visualTime;
       if (uniforms.uSub) uniforms.uSub.value = features.sub;
@@ -398,11 +497,13 @@ export class VisualizerEngine {
       if (uniforms.uJourney) uniforms.uJourney.value = obj.journey;
       if (uniforms.uHue) uniforms.uHue.value = obj.hue * Math.PI * 2;
       if (uniforms.uTrance) uniforms.uTrance.value = obj.trance;
+      if (uniforms.uCalm) uniforms.uCalm.value = dynamics.calm;
+      if (uniforms.uEnergy) uniforms.uEnergy.value = dynamics.energy;
       if (uniforms.uCosmic) uniforms.uCosmic.value = obj.cosmic;
       if (uniforms.uOpacity) uniforms.uOpacity.value = obj.opacity;
 
       if (obj.style === 'chladni') {
-        const resonance = obj.director.update(features, delta);
+        const resonance = obj.director.update(features, delta, dynamics.energy);
         uniforms.uFamilyA.value = resonance.familyA;
         uniforms.uFamilyB.value = resonance.familyB;
         uniforms.uModeAX.value = resonance.modeAX;

@@ -72,15 +72,18 @@ export class ResonanceDirector {
       + Math.abs((features.tonality ?? 0.5) - this.anchor.tonality) * 0.55;
   }
 
-  startTransition(features) {
+  startTransition(features, energy = 1) {
     this.sequence += 1;
     this.target = this.makeChapter(features, true);
     this.transitionTime = 0;
-    this.transitionDuration = 0.72 + (1 - (features.flux ?? 0)) * 0.58;
+    const calm = 1 - clamp01(energy);
+    this.transitionDuration = 0.72 + calm * 3.8
+      + (1 - (features.flux ?? 0)) * (0.4 + calm * 0.7);
   }
 
-  update(features, delta = 1 / 60) {
+  update(features, delta = 1 / 60, energy = 1) {
     const dt = Math.max(0, Math.min(delta, 0.1));
+    const journeyEnergy = clamp01(energy);
     if (!this.current) {
       this.current = this.makeChapter(features);
       this.anchor = snapshot(features);
@@ -104,10 +107,17 @@ export class ResonanceDirector {
     const changeScore = this.changeScore(features);
     const strongOnset = (features.onset ?? 0) > 0.72;
     const hasSignal = (features.level ?? 0) > 0.035;
-    const musicalChange = this.chapterAge > 1.05 && strongOnset && changeScore > 0.2;
-    const phraseChange = this.chapterAge > 3.4 && hasSignal && changeScore > 0.16;
-    const maximumHold = this.chapterAge > 5.2 && hasSignal;
-    if (musicalChange || phraseChange || maximumHold) this.startTransition(features);
+    const musicalHold = 2.8 - journeyEnergy * 1.75;
+    const phraseHold = 7.2 - journeyEnergy * 3.8;
+    const maximumHoldTime = 13 - journeyEnergy * 7.8;
+    const musicalChange = this.chapterAge > musicalHold && strongOnset
+      && changeScore > 0.2 + (1 - journeyEnergy) * 0.08;
+    const phraseChange = this.chapterAge > phraseHold && hasSignal
+      && changeScore > 0.16 + (1 - journeyEnergy) * 0.06;
+    const maximumHold = this.chapterAge > maximumHoldTime && hasSignal;
+    if (musicalChange || phraseChange || maximumHold) {
+      this.startTransition(features, journeyEnergy);
+    }
 
     return this.output(0);
   }

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createSerpentFieldConfig } from './VisualDynamics.js';
 
 const COIL_COUNT = 6;
 
@@ -49,8 +50,10 @@ function createSerpentGeometry() {
 }
 
 export function getJungleSerpentMaterial(influenceTexture) {
+  const field = createSerpentFieldConfig();
   const uniforms = {
     uTime: { value: 0 },
+    uTravelTime: { value: 0 },
     uAspect: { value: 16 / 9 },
     uInfluenceMap: { value: influenceTexture },
     uLevel: { value: 0 },
@@ -60,6 +63,18 @@ export function getJungleSerpentMaterial(influenceTexture) {
     uFlux: { value: 0 },
     uOnset: { value: 0 },
     uHue: { value: 0 },
+    uTrance: { value: 0.5 },
+    uCalm: { value: 0.5 },
+    uEnergy: { value: 0.5 },
+    uCosmic: { value: 0.2 },
+    uFlowAngle: { value: field.angle },
+    uWaveAmplitude: { value: field.waveAmplitude },
+    uLaneOffsets: { value: field.lanes.map(lane => lane.offset) },
+    uLaneSpeeds: { value: field.lanes.map(lane => lane.speed) },
+    uLaneDirections: { value: field.lanes.map(lane => lane.direction) },
+    uLanePhases: { value: field.lanes.map(lane => lane.phase) },
+    uLaneRadii: { value: field.lanes.map(lane => lane.radius) },
+    uLaneDepths: { value: field.lanes.map(lane => lane.depth) },
   };
 
   const material = new THREE.ShaderMaterial({
@@ -69,10 +84,20 @@ export function getJungleSerpentMaterial(influenceTexture) {
       attribute float aAngle;
       attribute float aCoil;
       uniform float uTime;
+      uniform float uTravelTime;
       uniform float uAspect;
       uniform float uLevel;
       uniform float uBass;
       uniform float uMid;
+      uniform float uEnergy;
+      uniform float uFlowAngle;
+      uniform float uWaveAmplitude;
+      uniform float uLaneOffsets[6];
+      uniform float uLaneSpeeds[6];
+      uniform float uLaneDirections[6];
+      uniform float uLanePhases[6];
+      uniform float uLaneRadii[6];
+      uniform float uLaneDepths[6];
       uniform sampler2D uInfluenceMap;
       varying float vAlong;
       varying float vAngle;
@@ -80,6 +105,7 @@ export function getJungleSerpentMaterial(influenceTexture) {
       varying vec3 vNormal;
       varying vec3 vPosition;
       varying vec4 vInfluence;
+      varying float vFlowPosition;
 
       const float PI = 3.14159265359;
       const float TAU = 6.28318530718;
@@ -88,38 +114,75 @@ export function getJungleSerpentMaterial(influenceTexture) {
         return texture2D(uInfluenceMap, vec2(fract(t * 0.72 + coilIndex * 0.173), 0.5));
       }
 
-      float coilRadius(float coilIndex) {
-        if (coilIndex < 0.5) return 0.27;
-        if (coilIndex < 1.5) return 0.24;
-        if (coilIndex < 2.5) return 0.31;
-        if (coilIndex < 3.5) return 0.255;
-        if (coilIndex < 4.5) return 0.285;
-        return 0.225;
+      float laneOffset(float index) {
+        if (index < 0.5) return uLaneOffsets[0];
+        if (index < 1.5) return uLaneOffsets[1];
+        if (index < 2.5) return uLaneOffsets[2];
+        if (index < 3.5) return uLaneOffsets[3];
+        if (index < 4.5) return uLaneOffsets[4];
+        return uLaneOffsets[5];
+      }
+
+      float laneSpeed(float index) {
+        if (index < 0.5) return uLaneSpeeds[0];
+        if (index < 1.5) return uLaneSpeeds[1];
+        if (index < 2.5) return uLaneSpeeds[2];
+        if (index < 3.5) return uLaneSpeeds[3];
+        if (index < 4.5) return uLaneSpeeds[4];
+        return uLaneSpeeds[5];
+      }
+
+      float laneDirection(float index) {
+        if (index < 0.5) return uLaneDirections[0];
+        if (index < 1.5) return uLaneDirections[1];
+        if (index < 2.5) return uLaneDirections[2];
+        if (index < 3.5) return uLaneDirections[3];
+        if (index < 4.5) return uLaneDirections[4];
+        return uLaneDirections[5];
+      }
+
+      float lanePhase(float index) {
+        if (index < 0.5) return uLanePhases[0];
+        if (index < 1.5) return uLanePhases[1];
+        if (index < 2.5) return uLanePhases[2];
+        if (index < 3.5) return uLanePhases[3];
+        if (index < 4.5) return uLanePhases[4];
+        return uLanePhases[5];
+      }
+
+      float laneRadius(float index) {
+        if (index < 0.5) return uLaneRadii[0];
+        if (index < 1.5) return uLaneRadii[1];
+        if (index < 2.5) return uLaneRadii[2];
+        if (index < 3.5) return uLaneRadii[3];
+        if (index < 4.5) return uLaneRadii[4];
+        return uLaneRadii[5];
+      }
+
+      float laneDepth(float index) {
+        if (index < 0.5) return uLaneDepths[0];
+        if (index < 1.5) return uLaneDepths[1];
+        if (index < 2.5) return uLaneDepths[2];
+        if (index < 3.5) return uLaneDepths[3];
+        if (index < 4.5) return uLaneDepths[4];
+        return uLaneDepths[5];
       }
 
       vec3 baseCenterline(float t, float coilIndex) {
-        float s = t * 2.0 - 1.0;
-        vec3 center;
-
-        // Each body occupies its own broad path and depth lane. The open ends
-        // continue beyond the viewport, making the frame feel like a close-up.
-        if (coilIndex < 0.5) {
-          center = vec3(s * 1.48, 0.73 + sin((t + 0.08) * PI) * 0.16, -1.72);
-        } else if (coilIndex < 1.5) {
-          center = vec3(s * 1.48, 0.12 + sin(t * TAU - 0.85) * 0.21, -0.92);
-        } else if (coilIndex < 2.5) {
-          center = vec3(s * 1.5, -0.78 + sin((t - 0.12) * PI) * 0.17, -0.22);
-        } else if (coilIndex < 3.5) {
-          center = vec3(-0.82 + sin(t * PI * 1.25 + 0.4) * 0.17, s * 1.42, 0.36);
-        } else if (coilIndex < 4.5) {
-          center = vec3(0.79 + sin(t * PI * 1.35 - 0.65) * 0.19, s * 1.43, 0.08);
-        } else {
-          center = vec3(-1.18 + t * 2.35 + sin(t * PI) * 0.14,
-            -1.32 + t * 2.65 + sin(t * TAU + 0.4) * 0.1, -1.35);
-        }
-
-        center.x *= uAspect;
-        return center;
+        vec2 direction = normalize(vec2(cos(uFlowAngle) * uAspect, sin(uFlowAngle)));
+        vec2 corridorNormal = vec2(-direction.y, direction.x);
+        float period = 4.0;
+        float travel = uTravelTime * laneSpeed(coilIndex) * laneDirection(coilIndex)
+          + lanePhase(coilIndex);
+        float wrappedTravel = mod(travel, period) - period * 0.5;
+        float span = 5.4 + uAspect * 2.4;
+        float longitudinal = (t * 2.0 - 1.0) * span + wrappedTravel;
+        float flowPosition = longitudinal + travel;
+        float sharedWave = sin(flowPosition * TAU / period + coilIndex * 0.37)
+          * uWaveAmplitude;
+        vec2 center = direction * longitudinal
+          + corridorNormal * (laneOffset(coilIndex) + sharedWave);
+        return vec3(center, laneDepth(coilIndex));
       }
 
       vec3 centerline(float t, float coilIndex) {
@@ -129,9 +192,10 @@ export function getJungleSerpentMaterial(influenceTexture) {
         vec3 after = baseCenterline(t + 0.004, coilIndex);
         vec2 tangent = normalize(after.xy - before.xy);
         vec2 broadNormal = vec2(-tangent.y, tangent.x);
-        float bodyWave = sin(t * PI * (1.35 + mod(coilIndex, 3.0) * 0.22)
-          + uTime * 0.42 + coilIndex * 1.73);
-        float displacement = bodyWave * (0.008 + uBass * 0.016 + influence.r * 0.028);
+        float bodyWave = sin(t * PI * 1.4 + uTime * 0.34 + coilIndex * 1.73);
+        float displacement = bodyWave
+          * (0.0015 + uBass * 0.002 + influence.r * 0.003)
+          * mix(0.28, 1.0, uEnergy);
         center.xy += broadNormal * displacement;
         center.z += sin(t * PI + coilIndex) * influence.r * 0.014;
         return center;
@@ -150,7 +214,7 @@ export function getJungleSerpentMaterial(influenceTexture) {
         vec4 influence = influenceAt(aAlong, aCoil);
         float breath = 1.0 + uLevel * 0.025 + influence.r * 0.052;
         float slowRipple = sin(aAlong * TAU * 2.0 + uTime * 0.28 + aCoil) * 0.006;
-        float radius = coilRadius(aCoil) * breath + slowRipple * uBass;
+        float radius = laneRadius(aCoil) * breath + slowRipple * uBass;
         vec3 tubeNormal = normalize(cos(aAngle) * side + sin(aAngle) * binormal);
         vec3 transformed = center + tubeNormal * radius;
         vAlong = aAlong;
@@ -159,6 +223,8 @@ export function getJungleSerpentMaterial(influenceTexture) {
         vNormal = normalize(normalMatrix * tubeNormal);
         vPosition = transformed;
         vInfluence = influence;
+        vFlowPosition = (aAlong * 2.0 - 1.0) * (5.4 + uAspect * 2.4)
+          + uTravelTime * laneSpeed(aCoil) * laneDirection(aCoil) + lanePhase(aCoil);
         gl_Position = projectionMatrix * modelViewMatrix * vec4(transformed, 1.0);
       }
     `,
@@ -171,12 +237,16 @@ export function getJungleSerpentMaterial(influenceTexture) {
       uniform float uFlux;
       uniform float uOnset;
       uniform float uHue;
+      uniform float uCalm;
+      uniform float uEnergy;
+      uniform float uCosmic;
       varying float vAlong;
       varying float vAngle;
       varying float vCoil;
       varying vec3 vNormal;
       varying vec3 vPosition;
       varying vec4 vInfluence;
+      varying float vFlowPosition;
 
       const float TAU = 6.28318530718;
 
@@ -211,12 +281,10 @@ export function getJungleSerpentMaterial(influenceTexture) {
 
       vec3 coilColor(float coilIndex) {
         vec3 mineralGreen = vec3(0.08, 1.25, 0.42);
-        vec3 oldGold = vec3(1.65, 0.64, 0.1);
-        vec3 coldSilver = vec3(0.48, 1.12, 1.0);
-        float family = mod(coilIndex, 3.0);
-        if (family < 0.5) return oldGold;
-        if (family < 1.5) return mineralGreen;
-        return coldSilver;
+        vec3 oldGold = vec3(1.38, 0.58, 0.12);
+        vec3 cosmic = vec3(0.36, 0.92, 1.18);
+        float warmth = 0.3 + sin(coilIndex * 1.7) * 0.08;
+        return mix(mix(mineralGreen, oldGold, warmth), cosmic, uCosmic * 0.62);
       }
 
       void main() {
@@ -231,11 +299,13 @@ export function getJungleSerpentMaterial(influenceTexture) {
         float rim = pow(1.0 - max(normal.z, 0.0), 3.0);
 
         float theta = vAngle / TAU;
-        float patternDrift = uTime * (0.11 + uFlux * 0.08) + vCoil * 0.71;
-        vec2 mazeUvA = vec2(vAlong * (18.0 + mod(vCoil, 3.0) * 2.0) - patternDrift,
+        float patternDrift = uTime * (0.035 + uEnergy * 0.075 + uFlux * 0.08 * uEnergy)
+          + vFlowPosition * 0.08;
+        vec2 mazeUvA = vec2(vFlowPosition * (2.2 + mod(vCoil, 3.0) * 0.2) - patternDrift,
           theta * (7.0 + mod(vCoil + 1.0, 3.0)));
-        vec2 mazeUvB = vec2(vAlong * (25.0 + mod(vCoil + 2.0, 3.0) * 2.0) + patternDrift * 0.62,
-          theta * (10.0 + mod(vCoil, 2.0)) + vAlong * 1.5);
+        vec2 mazeUvB = vec2(vFlowPosition * (3.0 + mod(vCoil + 2.0, 3.0) * 0.2)
+          + patternDrift * 0.62,
+          theta * (10.0 + mod(vCoil, 2.0)) + vFlowPosition * 0.18);
         float angularA = angularMaze(mazeUvA, 0.052);
         float angularB = angularMaze(mazeUvB, 0.044);
         float curvedA = curvedMaze(mazeUvA, 0.042);
@@ -248,8 +318,8 @@ export function getJungleSerpentMaterial(influenceTexture) {
         float topologyMix = smoothstep(0.16, 0.72, vInfluence.g + uMid * 0.24);
         float maze = mix(mazeA, mazeB, topologyMix);
 
-        float localPosition = fract(vAlong + vCoil * 0.137);
-        float pulseCenter = fract(uTime * 0.045 + vCoil * 0.19);
+        float localPosition = fract(vFlowPosition * 0.08);
+        float pulseCenter = fract(uTime * mix(0.018, 0.06, uEnergy));
         float pulseDistance = abs(localPosition - pulseCenter);
         pulseDistance = min(pulseDistance, 1.0 - pulseDistance);
         float travellingGlow = exp(-pulseDistance * pulseDistance * 58.0)
@@ -272,6 +342,8 @@ export function getJungleSerpentMaterial(influenceTexture) {
         color += vec3(0.9, 1.0, 0.94) * specular
           * (0.018 + vInfluence.a * 0.3) * soundGate;
         color += accent * rim * lightEnergy * 0.026 * soundGate;
+        color += accent * (vInfluence.g * 0.035 + vInfluence.a * 0.028)
+          * uCalm * soundGate;
         color = hueShift(color, uHue * TAU * 0.24);
         gl_FragColor = vec4(color, 1.0);
       }
@@ -286,5 +358,6 @@ export function getJungleSerpentMaterial(influenceTexture) {
     material,
     uniforms,
     geometry: createSerpentGeometry(),
+    field,
   };
 }

@@ -1,29 +1,12 @@
 import * as THREE from 'three';
+import {
+  createJourneyUniforms,
+  LAYER_MASK_GLSL,
+  LAYER_MASK_UNIFORMS,
+} from './JourneyUniforms.js';
 
 export function getPsychedelicMaterial() {
-  const uniforms = {
-    uTime: { value: 0 },
-    uJourney: { value: 0 },
-    uSub: { value: 0 },
-    uBass: { value: 0 },
-    uLowMid: { value: 0 },
-    uMid: { value: 0 },
-    uHighMid: { value: 0 },
-    uTreble: { value: 0 },
-    uSpectralLow: { value: 0 },
-    uSpectralMid: { value: 0 },
-    uSpectralHigh: { value: 0 },
-    uLevel: { value: 0 },
-    uBeat: { value: 0 },
-    uOnset: { value: 0 },
-    uFlux: { value: 0 },
-    uCentroid: { value: 0 },
-    uPitch: { value: 0.5 },
-    uSpread: { value: 0 },
-    uHue: { value: 0 },
-    uOpacity: { value: 1 },
-    uAspect: { value: 16 / 9 },
-  };
+  const uniforms = createJourneyUniforms();
 
   const vertexShader = `
     varying vec2 vUv;
@@ -55,7 +38,10 @@ export function getPsychedelicMaterial() {
     uniform float uHue;
     uniform float uOpacity;
     uniform float uAspect;
+    ${LAYER_MASK_UNIFORMS}
     varying vec2 vUv;
+
+    ${LAYER_MASK_GLSL}
 
     mat2 rotate2d(float angle) {
       float s = sin(angle);
@@ -113,7 +99,8 @@ export function getPsychedelicMaterial() {
       vec2 centered = vUv * 2.0 - 1.0;
       centered.x *= uAspect;
       float radius = length(centered);
-      float bassLens = sin(radius * (7.0 + uSpectralLow * 9.0) - uTime * 1.8) * uSpectralLow * 0.075;
+      float bassLens = sin(radius * (7.0 + uSpectralLow * 9.0) - uTime * 1.8)
+        * uSpectralLow * 0.075 * mix(0.22, 1.0, uEnergy);
       vec2 p = centered * (1.12 + bassLens);
       p = rotate2d(uJourney * 0.55 + uLowMid * 0.18) * p;
 
@@ -123,10 +110,13 @@ export function getPsychedelicMaterial() {
       vec2 foldedA = kaleidoscope(p, topologyBase);
       vec2 foldedB = kaleidoscope(p, topologyBase + 1.0);
       vec2 folded = mix(foldedA, foldedB, topologyBlend);
-      float structuralMix = clamp(uSpectralMid * 0.5 + uSpectralHigh * 0.28 + uSpread * 0.2 + uFlux * 0.25, 0.08, 0.9);
+      float structuralMix = clamp(uSpectralMid * 0.5 + uSpectralHigh * 0.28
+        + uSpread * 0.2 + uFlux * 0.25, 0.08, 0.9)
+        * mix(0.16, 1.0, uEnergy);
       p = mix(p, folded, structuralMix);
 
-      float flowSpeed = 0.24 + uLevel * 0.72 + uSpectralHigh * 0.52;
+      float flowSpeed = 0.08 + uEnergy * 0.2
+        + (uLevel * 0.72 + uSpectralHigh * 0.52) * mix(0.12, 1.0, uEnergy);
       vec2 q = vec2(
         fbm(p * (1.0 + uBass * 0.42) + vec2(uTime * flowSpeed, -uJourney * 3.0)),
         fbm(p + vec2(4.7, 2.1) - vec2(uJourney * 2.0, uTime * flowSpeed * 0.7))
@@ -136,12 +126,14 @@ export function getPsychedelicMaterial() {
         fbm(p + q * (1.25 + uMid * 1.5) + vec2(7.3, 2.8) - uTime * 0.31)
       );
 
-      float turbulence = 1.0 + uFlux * 1.6 + uOnset * 0.75;
+      float turbulence = 0.72 + uEnergy * 0.28
+        + (uFlux * 1.6 + uOnset * 0.75) * uEnergy;
       float fieldA = fbm(p + r * turbulence);
       float fieldB = fbm(rotate2d(1.57) * p - q * (0.8 + uTreble));
       float field = mix(fieldA, fieldB, clamp(uCentroid * 0.5 + uPitch * 0.28, 0.0, 0.88));
       float ridges = pow(1.0 - abs(sin((field + length(r) * 0.32) * (8.0 + uSpectralHigh * 14.0 + uSpread * 4.0))), 4.0);
-      float impact = exp(-abs(radius - (0.18 + uBeat * 0.55)) * (22.0 + uSpectralHigh * 14.0)) * uBeat;
+      float impact = exp(-abs(radius - (0.18 + uBeat * 0.55))
+        * (22.0 + uSpectralHigh * 14.0)) * uBeat * mix(0.12, 1.0, uEnergy);
       float granularDetail = noise(p * (8.0 + uSpectralHigh * 16.0) + uTime * 2.0) * uSpectralHigh;
 
       vec3 phase = vec3(
@@ -159,9 +151,10 @@ export function getPsychedelicMaterial() {
       color *= 0.62 + uLevel * 0.34 + smoothstep(1.35, 0.1, radius) * 0.42;
       color = hueShift(color, uHue);
 
-      float grain = (hash21(gl_FragCoord.xy + uTime * 31.0) - 0.5) * 0.028;
+      float grain = (hash21(gl_FragCoord.xy + uTime * 31.0) - 0.5)
+        * mix(0.006, 0.028, uEnergy);
       color += grain;
-      gl_FragColor = vec4(color, uOpacity);
+      gl_FragColor = vec4(color, uOpacity * luminousLayerCoverage(color, vUv));
     }
   `;
 

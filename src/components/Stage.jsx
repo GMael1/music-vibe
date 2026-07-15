@@ -33,6 +33,11 @@ const Stage = forwardRef(function Stage(
     engine.resize();
     engine.start();
 
+    const renderGameToText = () => JSON.stringify(engine.getDebugState());
+    const advanceTime = milliseconds => engine.advanceTime(milliseconds);
+    window.render_game_to_text = renderGameToText;
+    window.advanceTime = advanceTime;
+
     const resizeObserver = new ResizeObserver(() => engine.resize());
     resizeObserver.observe(canvasRef.current.parentElement);
 
@@ -40,6 +45,8 @@ const Stage = forwardRef(function Stage(
       resizeObserver.disconnect();
       engine.dispose();
       engineRef.current = null;
+      if (window.render_game_to_text === renderGameToText) delete window.render_game_to_text;
+      if (window.advanceTime === advanceTime) delete window.advanceTime;
     };
   }, []);
 

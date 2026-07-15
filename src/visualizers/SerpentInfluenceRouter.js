@@ -105,6 +105,8 @@ export class SerpentInfluenceRouter {
     let globalOnset = 0;
     let hueTotal = 0;
     let hueWeight = 0;
+    let journeyTotal = 0;
+    let cosmicTotal = 0;
 
     for (const [id, state] of this.states.entries()) {
       const fadeSpeed = state.target > state.fade ? 4.5 : 2.2;
@@ -131,6 +133,8 @@ export class SerpentInfluenceRouter {
       globalOnset = Math.max(globalOnset, state.features.onset * gain);
       const weight = Math.max(0.01, state.features.level) * gain;
       hueTotal += (state.config.cosmic ?? 0.2) * 0.13 * weight;
+      journeyTotal += (state.config.trance ?? 0.5) * weight;
+      cosmicTotal += (state.config.cosmic ?? 0.2) * weight;
       hueWeight += weight;
     }
 
@@ -178,6 +182,8 @@ export class SerpentInfluenceRouter {
       flux: clamp01(globalFlux),
       onset: clamp01(globalOnset),
       hue: hueWeight > 0 ? hueTotal / hueWeight : 0,
+      trance: hueWeight > 0 ? journeyTotal / hueWeight : 0.5,
+      cosmic: hueWeight > 0 ? cosmicTotal / hueWeight : 0.2,
       trackCount: visibleTracks,
     };
   }

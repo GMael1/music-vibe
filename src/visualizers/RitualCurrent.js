@@ -1,5 +1,9 @@
 import * as THREE from 'three';
-import { createJourneyUniforms } from './JourneyUniforms.js';
+import {
+  createJourneyUniforms,
+  LAYER_MASK_GLSL,
+  LAYER_MASK_UNIFORMS,
+} from './JourneyUniforms.js';
 
 function createParticleGeometry() {
   const particleCount = 46000;
@@ -43,10 +47,14 @@ export function getRitualCurrentMaterial() {
       uniform float uCosmic;
       uniform float uOpacity;
       uniform float uPixelRatio;
+      uniform float uAspect;
+      ${LAYER_MASK_UNIFORMS}
       varying vec3 vColor;
       varying float vAlpha;
 
       const float TAU = 6.28318530718;
+
+      ${LAYER_MASK_GLSL}
 
       float hash11(float p) {
         p = fract(p * 0.1031);
@@ -70,7 +78,7 @@ export function getRitualCurrentMaterial() {
         float dust = fract(laneValue);
         float seed = position.z;
         float lanePhase = lane * 1.713 + hash11(lane) * TAU;
-        float slowTime = uTime * (0.16 + uTrance * 0.32 + uFlux * 0.12);
+        float slowTime = uTime * (0.08 + uEnergy * 0.4 + uFlux * 0.12 * uEnergy);
 
         float turns = 1.2 + mod(lane, 4.0) * 0.42 + uMid * 0.5;
         float angle = along * TAU * turns + lanePhase + slowTime;
@@ -89,9 +97,11 @@ export function getRitualCurrentMaterial() {
         vec2 mandala = vec2(cos(angle), sin(angle))
           * (0.11 + fold * (0.25 + uTrance * 0.09));
         float formation = smoothstep(0.08, 0.72, uSpectralMid + uLevel * 0.45);
-        vec2 current = mix(spiral, mandala, formation * (0.22 + uTrance * 0.45));
+        vec2 current = mix(spiral, mandala,
+          formation * mix(0.08, 0.67, uEnergy));
 
-        float pressure = exp(-abs(fract(along - uJourney * 0.07) - 0.5) * 12.0) * uOnset;
+        float pressure = exp(-abs(fract(along - uJourney * 0.07) - 0.5) * 12.0)
+          * uOnset * mix(0.08, 1.0, uEnergy);
         current += normalize(current + vec2(0.0001)) * pressure * 0.035;
         current += vec2(
           sin(seed * 91.0 + slowTime * 2.0),
@@ -108,7 +118,9 @@ export function getRitualCurrentMaterial() {
         vec3 cosmic = cosmicPalette(seed + along * 0.42 + lane * 0.07);
         vColor = mix(earth, cosmic, uCosmic);
         float gate = smoothstep(0.006, 0.19, uLevel);
-        vAlpha = gate * uOpacity * (0.18 + dust * 0.42 + uSpectralHigh * 0.34);
+        vec2 layerUv = current + 0.5;
+        vAlpha = gate * uOpacity * softLayerMask(layerUv)
+          * (0.18 + dust * 0.42 + uSpectralHigh * 0.34);
       }
     `,
     fragmentShader: `

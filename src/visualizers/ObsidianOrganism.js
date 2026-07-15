@@ -1,5 +1,10 @@
 import * as THREE from 'three';
-import { createJourneyUniforms, FULLSCREEN_VERTEX_SHADER } from './JourneyUniforms.js';
+import {
+  createJourneyUniforms,
+  FULLSCREEN_VERTEX_SHADER,
+  LAYER_MASK_GLSL,
+  LAYER_MASK_UNIFORMS,
+} from './JourneyUniforms.js';
 
 export function getObsidianOrganismMaterial() {
   const uniforms = createJourneyUniforms();
@@ -21,9 +26,12 @@ export function getObsidianOrganismMaterial() {
       uniform float uCosmic;
       uniform float uOpacity;
       uniform float uAspect;
+      ${LAYER_MASK_UNIFORMS}
       varying vec2 vUv;
 
       const float TAU = 6.28318530718;
+
+      ${LAYER_MASK_GLSL}
 
       mat2 rotate2d(float angle) {
         float s = sin(angle);
@@ -47,7 +55,7 @@ export function getObsidianOrganismMaterial() {
       }
 
       float organism(vec3 p) {
-        float slow = uTime * (0.12 + uTrance * 0.18);
+        float slow = uTime * (0.035 + uEnergy * 0.265);
         float scale = 0.72;
         p *= scale;
         p.xy = rotate2d(slow * 0.38 + uJourney * 0.05) * p.xy;
@@ -74,10 +82,10 @@ export function getObsidianOrganismMaterial() {
             sin(phase) * 0.18
           );
           float sphere = length(p - center) - (0.16 + sin(phase * 2.1) * 0.028);
-          field = smoothMin(field, sphere, 0.07 + uTrance * 0.045);
+          field = smoothMin(field, sphere, 0.07 + uEnergy * 0.045);
         }
         float ripple = sin(p.x * 7.0 + p.y * 6.0 + p.z * 5.0 - slow * 3.0)
-          * uSpectralMid * 0.022;
+          * uSpectralMid * mix(0.004, 0.022, uEnergy);
         return (field + ripple) / scale;
       }
 
@@ -138,11 +146,11 @@ export function getObsidianOrganismMaterial() {
             * rim * gate * (0.025 + uSpectralHigh * 0.16);
           color += vec3(0.85, 0.92, 0.88) * specular * gate
             * (0.045 + uTreble * 0.38);
-          color += emission * uOnset * rim * gate * 0.12;
+          color += emission * uOnset * rim * gate * mix(0.015, 0.12, uEnergy);
         }
         float haze = exp(-length(uv) * 2.8) * gate * 0.006;
         color += mix(vec3(0.08, 0.025, 0.006), vec3(0.08, 0.02, 0.16), uCosmic) * haze;
-        gl_FragColor = vec4(color, uOpacity);
+        gl_FragColor = vec4(color, uOpacity * luminousLayerCoverage(color, vUv));
       }
     `,
     transparent: true,

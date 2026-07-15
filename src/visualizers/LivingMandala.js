@@ -1,5 +1,10 @@
 import * as THREE from 'three';
-import { createJourneyUniforms, FULLSCREEN_VERTEX_SHADER } from './JourneyUniforms.js';
+import {
+  createJourneyUniforms,
+  FULLSCREEN_VERTEX_SHADER,
+  LAYER_MASK_GLSL,
+  LAYER_MASK_UNIFORMS,
+} from './JourneyUniforms.js';
 
 export function getLivingMandalaMaterial() {
   const uniforms = createJourneyUniforms();
@@ -23,9 +28,12 @@ export function getLivingMandalaMaterial() {
       uniform float uCosmic;
       uniform float uOpacity;
       uniform float uAspect;
+      ${LAYER_MASK_UNIFORMS}
       varying vec2 vUv;
 
       const float TAU = 6.28318530718;
+
+      ${LAYER_MASK_GLSL}
 
       mat2 rotate2d(float angle) {
         float s = sin(angle);
@@ -78,19 +86,21 @@ export function getLivingMandalaMaterial() {
         float radius = length(p);
         float angle = atan(p.y, p.x);
 
-        float segments = 3.0 + floor(uPitch * 4.0 + uTrance * 3.0);
+        float segments = 3.0 + floor(uPitch * mix(1.5, 4.0, uEnergy)
+          + uEnergy * 3.0);
         vec2 folded = foldMandala(p, segments);
         float symmetry = 0.3 + uTrance * 0.58 + uSpectralMid * 0.12;
         vec2 q = mix(p, folded, symmetry);
 
         float breath = sin(radius * (12.0 + uSpectralLow * 10.0)
-          - uTime * (0.45 + uBass)) * (0.035 + uSpectralLow * 0.07);
+          - uTime * (0.12 + uBass * mix(0.12, 1.0, uEnergy)))
+          * (0.014 + uSpectralLow * mix(0.018, 0.07, uEnergy));
         q *= 1.0 + breath;
         vec2 flow = vec2(
           fbm(q * (2.0 + uMid) + vec2(uTime * 0.11, uJourney)),
           fbm(q * (2.3 + uTreble) - vec2(uJourney, uTime * 0.09))
         ) - 0.5;
-        q += flow * (0.28 + uFlux * 0.45 + uTrance * 0.18);
+        q += flow * mix(0.09, 0.46 + uFlux * 0.45, uEnergy);
 
         float cellA = fbm(q * (3.2 + uSpectralHigh * 2.8) + flow * 1.4);
         float cellB = fbm(rotate2d(1.57) * q * 3.8 - flow * 1.2);
@@ -99,7 +109,8 @@ export function getLivingMandalaMaterial() {
           * (14.0 + uSpectralMid * 13.0))), 5.0);
         float tunnel = pow(0.5 + 0.5 * cos(angle * segments
           + radius * (13.0 + uTrance * 8.0) - uTime * 0.22), 7.0);
-        float pulse = exp(-abs(radius - fract(uJourney * 0.12) * 1.25) * 24.0) * uOnset;
+        float pulse = exp(-abs(radius - fract(uJourney * 0.12) * 1.25) * 24.0)
+          * uOnset * mix(0.08, 1.0, uEnergy);
 
         vec3 earthBase = vec3(0.002, 0.003, 0.002);
         vec3 earthGlow = mix(vec3(0.55, 0.09, 0.018), vec3(1.35, 0.62, 0.08), cellA);
@@ -115,7 +126,7 @@ export function getLivingMandalaMaterial() {
           * pulse * gate * 0.32;
         color *= smoothstep(1.45, 0.18, length(screen));
         color += (hash21(gl_FragCoord.xy + uTime * 19.0) - 0.5) * 0.008 * gate;
-        gl_FragColor = vec4(color, uOpacity);
+        gl_FragColor = vec4(color, uOpacity * luminousLayerCoverage(color, vUv));
       }
     `,
     transparent: true,
