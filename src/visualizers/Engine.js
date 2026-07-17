@@ -11,6 +11,7 @@ import { getLivingMandalaMaterial } from './LivingMandala.js';
 import { getObsidianOrganismMaterial } from './ObsidianOrganism.js';
 import { SandSimulation } from './SandSimulation.js';
 import { updateMandalaMotion } from './MandalaMotion.js';
+import { getPlateFrequencyFeatures } from './PlateFrequency.js';
 import {
   getJourneyDynamics,
   getLayerMaskConfig,
@@ -193,6 +194,7 @@ export class VisualizerEngine {
     this.lastRenderTimestamp = null;
     this.lastTime = performance.now() / 1000;
     this.manualTime = this.lastTime;
+    this.manualTimelineTime = 0;
     this.serpentDemo = import.meta.env.DEV
       && new URLSearchParams(window.location.search).has('serpentDemo');
     this.unsubscribeMixer = globalMixer.subscribe(event => {
@@ -490,7 +492,13 @@ export class VisualizerEngine {
     const steps = Math.max(1, Math.round(milliseconds / (1000 / 60)));
     for (let index = 0; index < steps; index += 1) {
       this.manualTime += 1 / 60;
-      this.renderFrame(this.manualTime, 1 / 60, id => globalMixer.getTrackAnalyser(id), globalMixer.getCurrentTime());
+      this.manualTimelineTime += 1 / 60;
+      this.renderFrame(
+        this.manualTime,
+        1 / 60,
+        id => globalMixer.getTrackAnalyser(id),
+        this.manualTimelineTime,
+      );
     }
   }
 
@@ -511,6 +519,29 @@ export class VisualizerEngine {
           : undefined,
         mandalaFrequencyShape: obj.style === 'livingMandala'
           ? Number((obj.mandalaMotion?.frequencyShape ?? 0).toFixed(3))
+          : undefined,
+        plateFrequencyHz: obj.style === 'chladni'
+          ? Number((obj.resonanceState?.sourceFrequency ?? 0).toFixed(1))
+          : undefined,
+        plateAudioFrequencyHz: obj.style === 'chladni'
+          ? Number((obj.resonanceState?.sourceAudioFrequency ?? 0).toFixed(1))
+          : undefined,
+        plateCalibration: obj.style === 'chladni'
+          ? Number((obj.resonanceState?.plateCalibration ?? 1).toFixed(2))
+          : undefined,
+        plateFrequencyMotion: obj.style === 'chladni'
+          ? Number((obj.resonanceState?.frequencyMotion ?? 0).toFixed(3))
+          : undefined,
+        plateSecondaryWeight: obj.style === 'chladni'
+          ? Number((obj.resonanceState?.secondaryWeight ?? 0).toFixed(3))
+          : undefined,
+        plateModes: obj.style === 'chladni' && obj.resonanceState
+          ? [
+            `${obj.resonanceState.modeAX}:${obj.resonanceState.modeAY}`,
+            `${obj.resonanceState.modeBX}:${obj.resonanceState.modeBY}`,
+            `${obj.resonanceState.modeCX}:${obj.resonanceState.modeCY}`,
+            `${obj.resonanceState.modeDX}:${obj.resonanceState.modeDY}`,
+          ]
           : undefined,
         serpentTravel: obj.style === 'serpent'
           ? Number((obj.travelTime ?? 0).toFixed(3))
@@ -702,13 +733,9 @@ export class VisualizerEngine {
       if (uniforms.uSectionNovelty) uniforms.uSectionNovelty.value = trackJourney.novelty;
 
       if (obj.style === 'chladni') {
-        const structuralFeatures = {
-          ...features,
-          peakHz1: obj.structurePeakHz1,
-          peakHz2: obj.structurePeakHz2,
-          peakStrength2: obj.structurePeakStrength2,
-        };
+        const structuralFeatures = getPlateFrequencyFeatures(features, trackJourney, obj.profile);
         const resonance = obj.director.update(structuralFeatures, delta, obj.trance);
+        obj.resonanceState = resonance;
         uniforms.uFamilyA.value = resonance.familyA;
         uniforms.uFamilyB.value = resonance.familyB;
         uniforms.uFamilyC.value = resonance.familyC;
@@ -737,6 +764,9 @@ export class VisualizerEngine {
           resonance.weightD,
         );
         if (uniforms.uModeInstability) uniforms.uModeInstability.value = resonance.instability;
+        if (uniforms.uFrequencyMotion) {
+          uniforms.uFrequencyMotion.value = resonance.frequencyMotion;
+        }
         if (obj.sand) {
           uniforms.uSandTexture.value = obj.sand.update(
             this.renderer,

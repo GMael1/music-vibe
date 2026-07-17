@@ -19,6 +19,7 @@ const SIMULATION_FRAGMENT_SHADER = `
   uniform float uLevelFast;
   uniform float uFlow;
   uniform float uInstability;
+  uniform float uFrequencyMotion;
   uniform float uDefinition;
   uniform float uBlueprintPhase;
   uniform vec4 uFamilies;
@@ -93,15 +94,18 @@ const SIMULATION_FRAGMENT_SHADER = `
 
   float targetDensity(vec2 uv) {
     vec2 p = platePoint(uv);
+    float primaryWeight = max(0.0001, uModeWeights.x + uModeWeights.y);
+    float secondaryWeight = uModeWeights.z + uModeWeights.w;
+    float primaryModeMix = uModeWeights.y / primaryWeight;
+    float secondaryModeMix = uModeWeights.w / max(0.0001, secondaryWeight);
     float fieldA = resonanceField(p, uFamilies.x, uModesX.x, uModesY.x, uRotations.x, uSeeds.x);
     float fieldB = resonanceField(p, uFamilies.y, uModesX.y, uModesY.y, uRotations.y, uSeeds.y);
     float fieldC = resonanceField(p, uFamilies.z, uModesX.z, uModesY.z, uRotations.z, uSeeds.z);
     float fieldD = resonanceField(p, uFamilies.w, uModesX.w, uModesY.w, uRotations.w, uSeeds.w);
-    float density = exp(-abs(fieldA) * uDefinition) * uModeWeights.x
-      + exp(-abs(fieldB) * uDefinition) * uModeWeights.y
-      + exp(-abs(fieldC) * uDefinition) * uModeWeights.z
-      + exp(-abs(fieldD) * uDefinition) * uModeWeights.w;
-    return clamp(density, 0.0, 1.0);
+    float primaryDistance = mix(abs(fieldA), abs(fieldB), primaryModeMix);
+    float secondaryDistance = mix(abs(fieldC), abs(fieldD), secondaryModeMix);
+    float nodalDistance = mix(primaryDistance, secondaryDistance, secondaryWeight);
+    return exp(-nodalDistance * uDefinition);
   }
 
   void main() {
@@ -124,14 +128,15 @@ const SIMULATION_FRAGMENT_SHADER = `
 
     float activity = 0.08 + uRelativeLevel * 0.34 + uLevelFast * 0.12;
     float liquidFlow = mix(0.45, 1.35, uFlow);
-    float damping = exp(-uDelta * mix(3.8, 2.15, activity) / liquidFlow);
+    float transitionMobility = 1.0 + uFrequencyMotion * 0.48;
+    float damping = exp(-uDelta * mix(3.8, 2.15, activity) / (liquidFlow * transitionMobility));
     velocity = velocity * damping
-      + attraction * gradientStrength * uDelta * (0.025 + activity * 0.075) * liquidFlow;
-    float velocityLimit = (0.012 + activity * 0.028) * liquidFlow;
+      + attraction * gradientStrength * uDelta * (0.035 + activity * 0.09)
+        * liquidFlow * transitionMobility;
+    float velocityLimit = (0.012 + activity * 0.028 + uFrequencyMotion * 0.006) * liquidFlow;
     velocity = clamp(velocity, vec2(-velocityLimit), vec2(velocityLimit));
 
-    vec2 sourceUv = clamp(vUv - velocity * uDelta, texel, 1.0 - texel);
-    float advected = texture2D(uPreviousState, sourceUv).r;
+    float previousDensity = previous.r;
     float neighborDensity = (
       texture2D(uPreviousState, vUv + vec2(texel.x, 0.0)).r
       + texture2D(uPreviousState, vUv - vec2(texel.x, 0.0)).r
@@ -139,8 +144,10 @@ const SIMULATION_FRAGMENT_SHADER = `
       + texture2D(uPreviousState, vUv - vec2(0.0, texel.y)).r
     ) * 0.25;
     float target = targetDensity(vUv);
-    float settleRate = 1.0 - exp(-uDelta * (0.14 + activity * 0.28) * liquidFlow);
-    float density = mix(advected, target, settleRate);
+    float settleRate = 1.0 - exp(-uDelta * (
+      0.42 + activity * 0.72 + uInstability * 0.48 + uFrequencyMotion * 3.2
+    ) * liquidFlow);
+    float density = mix(previousDensity, target, settleRate);
     float surfaceTension = 1.0 - exp(-uDelta * (0.55 + uInstability * 0.4));
     density = mix(density, neighborDensity, surfaceTension);
     gl_FragColor = vec4(clamp(density, 0.0, 1.0), velocity * 0.5 + 0.5, 1.0);
@@ -178,6 +185,7 @@ export class SandSimulation {
       uLevelFast: { value: 0 },
       uFlow: { value: 0.5 },
       uInstability: { value: 0 },
+      uFrequencyMotion: { value: 0 },
       uDefinition: { value: 7 },
       uBlueprintPhase: { value: 0 },
       uFamilies: { value: new THREE.Vector4() },
@@ -229,6 +237,7 @@ export class SandSimulation {
     uniforms.uLevelFast.value = features.levelFast ?? features.level ?? 0;
     uniforms.uFlow.value = flow;
     uniforms.uInstability.value = resonance.instability ?? 0;
+    uniforms.uFrequencyMotion.value = resonance.frequencyMotion ?? 0;
     uniforms.uDefinition.value = 5.2 + (features.levelSlow ?? features.level ?? 0) * 2.2
       + (features.tonality ?? 0.5) * 1.2;
     uniforms.uBlueprintPhase.value = blueprintPhase;

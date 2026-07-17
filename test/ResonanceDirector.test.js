@@ -53,6 +53,7 @@ test('allows two strong separated peaks to coexist', () => {
 
   assert.notDeepEqual([result.familyA, result.modeAX, result.modeAY], [result.familyC, result.modeCX, result.modeCY]);
   assert.ok(result.weightC + result.weightD > 0);
+  assert.ok(result.weightC + result.weightD <= 0.28);
   assert.ok(Math.abs(result.weightA + result.weightB + result.weightC + result.weightD - 1) < 1e-6);
 });
 
@@ -102,4 +103,22 @@ test('keeps valid modal weights when an analyser peak is not finite', () => {
 
   assert.ok(weights.every(Number.isFinite));
   assert.ok(Math.abs(weights.reduce((total, weight) => total + weight, 0) - 1) < 1e-6);
+});
+
+test('turns a frequency change into a visible but smoothly decaying liquid transition', () => {
+  const director = new ResonanceDirector('responsive-sweep');
+  director.update(tone(180), 1 / 60, 0.5);
+  let transition;
+  for (let frame = 0; frame < 30; frame += 1) {
+    transition = director.update(tone(880), 1 / 60, 0.5);
+  }
+
+  assert.ok(transition.sourceFrequency > 500);
+  assert.ok(transition.frequencyMotion > 0.25);
+
+  let settled = transition;
+  for (let frame = 0; frame < 180; frame += 1) {
+    settled = director.update(tone(880), 1 / 60, 0.5);
+  }
+  assert.ok(settled.frequencyMotion < transition.frequencyMotion * 0.25);
 });

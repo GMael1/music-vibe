@@ -31,6 +31,7 @@ export function getChladniMaterial() {
     uFamilyMix: { value: 0 },
     uModeWeights: { value: new THREE.Vector4(1, 0, 0, 0) },
     uModeInstability: { value: 0 },
+    uFrequencyMotion: { value: 0 },
     uSandTexture: { value: null },
     uSandReady: { value: 0 },
     uSandTexel: { value: new THREE.Vector2(1 / 560, 1 / 320) },
@@ -93,6 +94,7 @@ export function getChladniMaterial() {
     uniform float uFamilyMix;
     uniform vec4 uModeWeights;
     uniform float uModeInstability;
+    uniform float uFrequencyMotion;
     uniform sampler2D uSandTexture;
     uniform float uSandReady;
     uniform vec2 uSandTexel;
@@ -175,6 +177,7 @@ export function getChladniMaterial() {
     vec2 fluidWarp(vec2 p) {
       float acousticMotion = mix(uLevelSlow, uLevelFast, 0.62) * uDynamicGain;
       float flow = 0.001 + uModeInstability * (0.002 + acousticMotion * 0.0025)
+        + uFrequencyMotion * 0.0045
         + uFlux * 0.0015 * mix(0.2, 1.0, uEnergy);
       vec2 curl = vec2(
         sin(p.y * (2.1 + uSpectralMid * 0.4) + uTime * 0.075),
@@ -184,6 +187,10 @@ export function getChladniMaterial() {
     }
 
     float sandDensity(vec2 warpedP) {
+      float primaryWeight = max(0.0001, uModeWeights.x + uModeWeights.y);
+      float secondaryWeight = uModeWeights.z + uModeWeights.w;
+      float primaryModeMix = uModeWeights.y / primaryWeight;
+      float secondaryModeMix = uModeWeights.w / max(0.0001, secondaryWeight);
       float fieldA = resonanceField(warpedP, uFamilyA, uModeAX, uModeAY, uRotationA, uSeedA);
       float fieldB = resonanceField(warpedP, uFamilyB, uModeBX, uModeBY, uRotationB, uSeedB);
       float fieldC = resonanceField(warpedP, uFamilyC, uModeCX, uModeCY, uRotationC, uSeedC);
@@ -194,11 +201,10 @@ export function getChladniMaterial() {
         0.0,
         1.0
       ));
-      float densityA = exp(-abs(fieldA) * definition);
-      float densityB = exp(-abs(fieldB) * definition);
-      float densityC = exp(-abs(fieldC) * definition);
-      float densityD = exp(-abs(fieldD) * definition);
-      return clamp(dot(vec4(densityA, densityB, densityC, densityD), uModeWeights), 0.0, 1.0);
+      float primaryDistance = mix(abs(fieldA), abs(fieldB), primaryModeMix);
+      float secondaryDistance = mix(abs(fieldC), abs(fieldD), secondaryModeMix);
+      float nodalDistance = mix(primaryDistance, secondaryDistance, secondaryWeight);
+      return exp(-nodalDistance * definition);
     }
 
     void main() {
@@ -225,7 +231,8 @@ export function getChladniMaterial() {
         + (sandLeft + sandRight + sandDown + sandUp) * 2.0
         + sandDownLeft + sandUpRight + sandUpLeft + sandDownRight
       ) / 16.0;
-      float density = mix(proceduralDensity, persistentDensity, uSandReady);
+      float persistentInfluence = uSandReady * mix(0.58, 0.24, uFrequencyMotion);
+      float density = mix(proceduralDensity, persistentDensity, persistentInfluence);
       density = clamp(density, 0.0, 1.0);
       vec2 sandVelocity = (persistentState.gb - 0.5) * 2.0;
       float liquidMotion = clamp(length(sandVelocity) * 18.0, 0.0, 1.0) * uSandReady;
@@ -277,7 +284,8 @@ export function getChladniMaterial() {
       color += mix(vec3(0.32, 0.12, 0.02), cosmic, uCosmic)
         * edgeGlint * rim * (0.18 + uSpectralHigh * 0.18);
       color += mix(vec3(0.92, 0.32, 0.055), cosmic, uCosmic)
-        * liquidMotion * body * (0.035 + uRelativeLevel * 0.09);
+        * (liquidMotion + uFrequencyMotion * 0.34) * body
+        * (0.035 + uRelativeLevel * 0.09);
       float dormantGlow = 0.07 + uLight * 0.18 + uPresence * 0.04 + uLevelSlow * 0.06;
       color += sandColor * body * dormantGlow;
 

@@ -58,6 +58,8 @@ export class ResonanceDirector {
     this.smoothedHz = 0;
     this.smoothedSecondaryHz = 0;
     this.smoothedSecondaryWeight = 0;
+    this.frequencyMotion = 0;
+    this.previousSmoothedHz = 0;
   }
 
   update(features, delta = 1 / 60, flow = 0.5) {
@@ -67,17 +69,25 @@ export class ResonanceDirector {
       positiveFrequency(features.dominantHz, 110),
     );
     const secondaryHz = positiveFrequency(features.peakHz2, primaryHz);
-    const structuralSpeed = 0.38 + clamp01(flow) * 0.82;
+    const structuralSpeed = 1.35 + clamp01(flow) * 2.05;
     const smoothing = 1 - Math.exp(-dt * structuralSpeed);
     if (!this.smoothedHz) this.smoothedHz = primaryHz;
     else this.smoothedHz += (primaryHz - this.smoothedHz) * smoothing;
     if (!this.smoothedSecondaryHz) this.smoothedSecondaryHz = secondaryHz;
     else this.smoothedSecondaryHz += (secondaryHz - this.smoothedSecondaryHz) * smoothing;
 
+    const previousHz = this.previousSmoothedHz || this.smoothedHz;
+    const octavesPerSecond = Math.abs(Math.log2(this.smoothedHz / Math.max(1, previousHz))) / dt;
+    const motionTarget = clamp01(octavesPerSecond / 0.72);
+    const motionRate = motionTarget > this.frequencyMotion ? 6.5 : 1.8;
+    this.frequencyMotion += (motionTarget - this.frequencyMotion)
+      * (1 - Math.exp(-dt * motionRate));
+    this.previousSmoothedHz = this.smoothedHz;
+
     const frequencyRatio = Math.max(this.smoothedHz, this.smoothedSecondaryHz)
       / Math.max(1, Math.min(this.smoothedHz, this.smoothedSecondaryHz));
     const separation = clamp01(Math.log2(Math.max(1, frequencyRatio)) / 1.35);
-    const secondaryTarget = clamp01(features.peakStrength2) * separation;
+    const secondaryTarget = clamp01(features.peakStrength2) * separation * 0.42;
     this.smoothedSecondaryWeight += (secondaryTarget - this.smoothedSecondaryWeight)
       * (1 - Math.exp(-dt * (0.42 + clamp01(flow) * 0.58)));
     const primaryBracket = bracketFrequency(this.smoothedHz);
@@ -86,9 +96,9 @@ export class ResonanceDirector {
     const modeB = primaryBracket.b;
     const modeC = secondaryBracket.a;
     const modeD = secondaryBracket.b;
-    const secondaryWeight = clamp01(
+    const secondaryWeight = Math.min(0.28, clamp01(
       this.smoothedSecondaryWeight * (0.72 + clamp01(features.spread) * 0.28),
-    );
+    ));
     const primaryWeight = 1 - secondaryWeight;
     const weights = [
       primaryWeight * (1 - primaryBracket.mix),
@@ -143,6 +153,12 @@ export class ResonanceDirector {
       modeFrequencyB: b.frequency,
       modeFrequencyC: c.frequency,
       modeFrequencyD: d.frequency,
+      sourceFrequency: this.smoothedHz,
+      sourceSecondaryFrequency: this.smoothedSecondaryHz,
+      sourceAudioFrequency: features.sourcePrimaryHz ?? this.smoothedHz,
+      plateCalibration: features.plateCalibration ?? 1,
+      frequencyMotion: this.frequencyMotion,
+      secondaryWeight,
       instability: clamp01((1 - Math.max(weightA, weightB, weightC, weightD)) * 0.72),
     };
   }
