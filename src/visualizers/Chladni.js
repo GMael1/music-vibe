@@ -98,6 +98,7 @@ export function getChladniMaterial() {
     uniform float uBlueprintPhase;
     uniform float uDefinitionBias;
     uniform float uDynamicGain;
+    uniform float uLight;
     uniform float uSectionIntensity;
     uniform float uSectionNovelty;
     uniform float uHue;
@@ -221,8 +222,12 @@ export function getChladniMaterial() {
 
       vec2 warpedP = fluidWarp(p);
       float proceduralDensity = sandDensity(warpedP);
-      float persistentDensity = texture2D(uSandTexture, vUv).r;
+      vec4 persistentState = texture2D(uSandTexture, vUv);
+      float persistentDensity = persistentState.r;
       float density = mix(proceduralDensity, persistentDensity, uSandReady);
+      density = pow(clamp(density, 0.0, 1.0), mix(0.78, 0.52, uLight));
+      vec2 sandVelocity = (persistentState.gb - 0.5) * 2.0;
+      float grainMotion = clamp(length(sandVelocity) * 17.0, 0.0, 1.0) * uSandReady;
       vec2 textureStep = vec2(1.0 / 720.0, 1.0 / 420.0);
       float densityX = mix(
         sandDensity(warpedP + vec2(0.0035, 0.0)),
@@ -241,7 +246,7 @@ export function getChladniMaterial() {
       vec2 grainGrid = floor(gl_FragCoord.xy / max(1.0, uPixelRatio * 0.72)
         + warpedP * 13.0 + tangent * density * 1.8);
       float grainRandom = hash21(grainGrid);
-      float grainThreshold = 0.86 - density * (0.54 + uRelativeLevel * 0.1);
+      float grainThreshold = 0.82 - density * (0.58 + uRelativeLevel * 0.1 + uLight * 0.06);
       float individualGrains = smoothstep(grainThreshold, grainThreshold + 0.06, grainRandom);
       float fineDust = hash21(grainGrid * 0.53 + 71.7) * density * 0.35;
       float sand = density * (0.06 + individualGrains * 1.18 + fineDust * 0.12);
@@ -254,23 +259,28 @@ export function getChladniMaterial() {
 
       vec3 voidColor = vec3(0.0015, 0.002, 0.006);
       vec3 darkMetal = vec3(0.025, 0.028, 0.032);
-      vec3 silver = vec3(0.68, 0.76, 0.78);
+      vec3 silver = vec3(0.88, 0.96, 1.0);
+      vec3 movingGold = vec3(1.28, 0.48, 0.08);
       vec3 alienCyan = vec3(0.16, 0.92, 0.82);
       vec3 ultraviolet = vec3(0.34, 0.08, 0.7);
       vec3 color = voidColor;
-      color += darkMetal * density * (0.18 + diffuse * 0.36);
-      color += silver * sand * (0.38 + diffuse * 0.86);
+      color += darkMetal * density * (0.22 + diffuse * 0.4);
+      color += silver * sand * (0.52 + diffuse * 1.02);
+      color += mix(movingGold, alienCyan, uSpectralHigh * 0.62)
+        * individualGrains * grainMotion * (0.24 + uRelativeLevel * 0.42);
       color += alienCyan * specular * sand * (0.08 + uSpectralHigh * 0.38);
       color += ultraviolet * edgeGlint * individualGrains * (0.035 + uSpectralMid * 0.12);
       color += alienCyan * individualGrains * uSpectralHigh * 0.08;
       color += silver * fineDust * (1.0 - uTonality) * 0.05;
-      float dormantGlow = 0.035 + uPresence * 0.07 + uLevelSlow * 0.11;
+      float dormantGlow = 0.075 + uLight * 0.16 + uPresence * 0.08 + uLevelSlow * 0.12;
       color += mix(silver, alienCyan, uBlueprintPhase) * density * dormantGlow;
       color = hueShift(color, uHue + uJourney * 0.08);
 
       float vignette = smoothstep(1.25, 0.32, length(plateUv));
-      color *= 0.64 + vignette * 0.48;
-      gl_FragColor = vec4(color, uOpacity * luminousLayerCoverage(color, vUv));
+      color *= (0.82 + vignette * 0.32) * mix(0.82, 1.55, uLight);
+      float luminance = dot(max(color, vec3(0.0)), vec3(0.2126, 0.7152, 0.0722));
+      float readableAlpha = softLayerMask(vUv) * mix(0.68, 1.0, smoothstep(0.01, 0.22, luminance));
+      gl_FragColor = vec4(color, uOpacity * readableAlpha);
     }
   `;
 

@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { VisualizerEngine } from '../visualizers/Engine';
 
 const Stage = forwardRef(function Stage(
-  { mode, tracks, format, isLiveListening, liveStyle, liveTrance, liveCosmic },
+  { mode, tracks, format, isLiveListening, liveStyle, liveFlow, liveLight, liveColor },
   ref,
 ) {
   const canvasRef = useRef(null);
@@ -56,10 +56,11 @@ const Stage = forwardRef(function Stage(
 
   useEffect(() => {
     engineRef.current?.updateTracks(tracks, mode, liveStyle, {
-      trance: liveTrance,
-      cosmic: liveCosmic,
+      flow: liveFlow,
+      light: liveLight,
+      color: liveColor,
     });
-  }, [tracks, mode, isLiveListening, liveStyle, liveTrance, liveCosmic]);
+  }, [tracks, mode, isLiveListening, liveStyle, liveFlow, liveLight, liveColor]);
 
   return <canvas ref={canvasRef} className="w-full h-full absolute inset-0 z-10" />;
 });

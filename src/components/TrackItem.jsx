@@ -109,51 +109,77 @@ export default function TrackItem({ track, onRemove, onUpdate, t }) {
             className="w-full accent-primary h-1 bg-black/50 rounded-lg appearance-none cursor-pointer"
           />
         </div>
-        {/* Artistic energy slider */}
+        {/* Motion direction */}
         <div>
           <label className="text-xs text-gray-400 mb-1 flex justify-between">
-            <span>{t('track.journey')}</span>
+            <span>{t('track.flow')}</span>
             <span className="text-gray-500">
-              {(track.trance ?? 0.5) < 0.45
-                ? t('value.meditative')
-                : ((track.trance ?? 0.5) > 0.55 ? t('value.ecstatic') : t('value.balanced'))}
+              {(track.flow ?? track.trance ?? 0.5) < 0.34
+                ? t('value.still')
+                : ((track.flow ?? track.trance ?? 0.5) > 0.67 ? t('value.intense') : t('value.fluid'))}
             </span>
           </label>
           <input
             type="range"
-            aria-label={t('track.journeyLabel')}
+            aria-label={t('track.flowLabel')}
             min="0" max="1" step="0.01"
-            value={track.trance ?? 0.5}
-            onChange={(e) => onUpdate(track.id, { trance: parseFloat(e.target.value) })}
+            value={track.flow ?? track.trance ?? 0.5}
+            onChange={(e) => onUpdate(track.id, { flow: parseFloat(e.target.value) })}
             className="w-full h-1.5 rounded-lg appearance-none cursor-pointer"
             style={{
-              background: 'linear-gradient(to right, #30372f, #92704a, #ff5e8b)'
+              background: 'linear-gradient(to right, #28302d, #517d70, #ef6a8f)'
             }}
           />
           <div className="mt-1 flex justify-between text-[9px] uppercase tracking-wider text-gray-600">
-            <span>{t('value.meditative')}</span><span>{t('value.ecstatic')}</span>
+            <span>{t('value.still')}</span><span>{t('value.intense')}</span>
           </div>
         </div>
-        
-        {/* Artistic palette slider */}
+
+        {/* Lighting direction */}
         <div>
           <label className="text-xs text-gray-400 mb-1 flex justify-between">
-            <span>{t('track.world')}</span>
+            <span>{t('track.light')}</span>
             <span className="text-gray-500">
-              {(track.cosmic ?? 0.2) < 0.45
-                ? t('value.darkEarthy')
-                : ((track.cosmic ?? 0.2) > 0.55 ? t('value.fullSpectrum') : t('value.transition'))}
+              {(track.light ?? 0.62) < 0.34
+                ? t('value.shadow')
+                : ((track.light ?? 0.62) > 0.67 ? t('value.radiant') : t('value.luminous'))}
             </span>
           </label>
-          <input 
-            type="range" 
-            aria-label={t('track.worldLabel')}
-            min="0" max="1" step="0.01" 
-            value={track.cosmic ?? 0.2}
-            onChange={(e) => onUpdate(track.id, { cosmic: parseFloat(e.target.value) })}
+          <input
+            type="range"
+            aria-label={t('track.lightLabel')}
+            min="0" max="1" step="0.01"
+            value={track.light ?? 0.62}
+            onChange={(e) => onUpdate(track.id, { light: parseFloat(e.target.value) })}
             className="w-full h-1.5 rounded-lg appearance-none cursor-pointer"
             style={{
-              background: 'linear-gradient(to right, #070604, #5d3b16, #b16a25, #00b7a8, #7757ff, #ff3e98)'
+              background: 'linear-gradient(to right, #050505, #625c50, #f4ead2)'
+            }}
+          />
+          <div className="mt-1 flex justify-between text-[9px] uppercase tracking-wider text-gray-600">
+            <span>{t('value.shadow')}</span><span>{t('value.radiant')}</span>
+          </div>
+        </div>
+
+        {/* Palette direction */}
+        <div>
+          <label className="text-xs text-gray-400 mb-1 flex justify-between">
+            <span>{t('track.colour')}</span>
+            <span className="text-gray-500">
+              {(track.color ?? track.cosmic ?? 0.2) < 0.34
+                ? t('value.earthy')
+                : ((track.color ?? track.cosmic ?? 0.2) > 0.67 ? t('value.cosmic') : t('value.mineral'))}
+            </span>
+          </label>
+          <input
+            type="range"
+            aria-label={t('track.colourLabel')}
+            min="0" max="1" step="0.01"
+            value={track.color ?? track.cosmic ?? 0.2}
+            onChange={(e) => onUpdate(track.id, { color: parseFloat(e.target.value) })}
+            className="w-full h-1.5 rounded-lg appearance-none cursor-pointer"
+            style={{
+              background: 'linear-gradient(to right, #2d1709, #b16a25, #00a99a, #7757ff, #ff3e98)'
             }}
           />
           <div className="mt-1 flex justify-between text-[9px] uppercase tracking-wider text-gray-600">

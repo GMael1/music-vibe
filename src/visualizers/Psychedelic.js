@@ -50,6 +50,7 @@ export function getPsychedelicMaterial() {
     uniform float uBlueprintPhase;
     uniform float uDefinitionBias;
     uniform float uDynamicGain;
+    uniform float uLight;
     uniform float uSectionIntensity;
     uniform float uSectionNovelty;
     ${LAYER_MASK_UNIFORMS}
@@ -169,6 +170,7 @@ export function getPsychedelicMaterial() {
       color += vec3(0.34, 0.82, 1.0) * granularDetail * 0.13;
       color *= 0.68 + uPresence * 0.1 + uRelativeLevel * 0.2 + uSectionIntensity * 0.08
         + smoothstep(1.35, 0.1, radius) * 0.42;
+      color *= mix(0.68, 1.42, uLight);
       color = hueShift(color, uHue);
 
       float grain = (hash21(gl_FragCoord.xy + uTime * 31.0) - 0.5)

@@ -202,16 +202,18 @@ export class VisualizerEngine {
   }
 
   updateTracks(tracks, mode, liveStyle, liveDirection = {}) {
-    const liveTrance = liveDirection.trance ?? 0.5;
-    const liveCosmic = liveDirection.cosmic ?? 0.2;
+    const liveFlow = liveDirection.flow ?? liveDirection.trance ?? 0.5;
+    const liveLight = liveDirection.light ?? 0.62;
+    const liveColor = liveDirection.color ?? liveDirection.cosmic ?? 0.2;
     const idleTrack = {
       id: '__ambient',
       visualStyle: mode === 'live' ? liveStyle : 'livingMandala',
       position: 'background',
       opacity: 0.7,
       blendMode: 'normal',
-      trance: liveTrance,
-      cosmic: liveCosmic,
+      flow: liveFlow,
+      light: liveLight,
+      color: liveColor,
     };
     const activeTracks = mode === 'live'
       ? (globalMixer.tracks.has('live') ? [{
@@ -220,8 +222,9 @@ export class VisualizerEngine {
           position: 'background',
           opacity: 1,
           blendMode: 'normal',
-          trance: liveTrance,
-          cosmic: liveCosmic,
+          flow: liveFlow,
+          light: liveLight,
+          color: liveColor,
         }] : [idleTrack])
       : (tracks.length > 0 ? tracks : [idleTrack]);
 
@@ -261,9 +264,11 @@ export class VisualizerEngine {
         }
         obj.visualTime = 0;
         obj.journey = 0;
-        obj.targetTrance = desired.track?.trance ?? 0.5;
+        obj.targetTrance = desired.track?.flow ?? desired.track?.trance ?? 0.5;
         obj.trance = obj.targetTrance;
-        obj.targetCosmic = desired.track?.cosmic ?? 0.2;
+        obj.targetLight = desired.track?.light ?? 0.62;
+        obj.light = obj.targetLight;
+        obj.targetCosmic = desired.track?.color ?? desired.track?.cosmic ?? 0.2;
         obj.cosmic = obj.targetCosmic;
         obj.blendSeed = visualSeed(id);
         if (obj.blueprint) obj.blendSeed = obj.blueprint.seed / 4294967295;
@@ -276,13 +281,17 @@ export class VisualizerEngine {
         obj.tracks = desired.tracks;
         obj.router.setTracks(desired.tracks);
         obj.targetTrance = desired.tracks.length > 0
-          ? desired.tracks.reduce((total, track) => total + (track.trance ?? 0.5), 0)
+          ? desired.tracks.reduce((total, track) => total + (track.flow ?? track.trance ?? 0.5), 0)
             / desired.tracks.length
-          : liveTrance;
+          : liveFlow;
         obj.targetCosmic = desired.tracks.length > 0
-          ? desired.tracks.reduce((total, track) => total + (track.cosmic ?? 0.2), 0)
+          ? desired.tracks.reduce((total, track) => total + (track.color ?? track.cosmic ?? 0.2), 0)
             / desired.tracks.length
-          : liveCosmic;
+          : liveColor;
+        obj.targetLight = desired.tracks.length > 0
+          ? desired.tracks.reduce((total, track) => total + (track.light ?? 0.62), 0)
+            / desired.tracks.length
+          : liveLight;
         obj.position = 'background';
         obj.mesh.renderOrder = 0;
         obj.mesh.scale.set(1, 1, 1);
@@ -293,8 +302,9 @@ export class VisualizerEngine {
 
       const { track } = desired;
       obj.position = track.position;
-      obj.targetTrance = track.trance ?? 0.5;
-      obj.targetCosmic = track.cosmic ?? 0.2;
+      obj.targetTrance = track.flow ?? track.trance ?? 0.5;
+      obj.targetLight = track.light ?? 0.62;
+      obj.targetCosmic = track.color ?? track.cosmic ?? 0.2;
       obj.reactivity = 0.72 + obj.targetTrance * 1.38;
       obj.hue = obj.targetCosmic * 0.13;
       obj.opacity = track.opacity ?? 1;
@@ -443,7 +453,8 @@ export class VisualizerEngine {
         id,
         style: obj.style,
         position: obj.position,
-        journey: Number((obj.trance ?? obj.smoothAudio?.trance ?? 0.5).toFixed(3)),
+        flow: Number((obj.trance ?? obj.smoothAudio?.trance ?? 0.5).toFixed(3)),
+        light: Number((obj.light ?? obj.targetLight ?? 0.62).toFixed(3)),
         visualTime: Number((obj.visualTime ?? 0).toFixed(3)),
         serpentTravel: obj.style === 'serpent'
           ? Number((obj.travelTime ?? 0).toFixed(3))
@@ -505,6 +516,7 @@ export class VisualizerEngine {
       }
 
       obj.trance = dampAudioValue(obj.trance, obj.targetTrance, delta, 0.85, 0.85);
+      obj.light = dampAudioValue(obj.light, obj.targetLight, delta, 0.8, 0.8);
       obj.cosmic = dampAudioValue(obj.cosmic, obj.targetCosmic, delta, 0.7, 0.7);
       const dynamics = getJourneyDynamics(obj.trance);
       const analyser = getAnalyser(id);
@@ -560,6 +572,7 @@ export class VisualizerEngine {
       if (uniforms.uCalm) uniforms.uCalm.value = dynamics.calm;
       if (uniforms.uEnergy) uniforms.uEnergy.value = dynamics.energy;
       if (uniforms.uCosmic) uniforms.uCosmic.value = obj.cosmic;
+      if (uniforms.uLight) uniforms.uLight.value = obj.light;
       if (uniforms.uOpacity) uniforms.uOpacity.value = obj.opacity;
       if (uniforms.uSectionIntensity) uniforms.uSectionIntensity.value = trackJourney.intensity;
       if (uniforms.uSectionNovelty) uniforms.uSectionNovelty.value = trackJourney.novelty;

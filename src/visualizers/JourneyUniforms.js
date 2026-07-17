@@ -35,6 +35,7 @@ export function createJourneyUniforms() {
     uCalm: { value: 0.5 },
     uEnergy: { value: 0.5 },
     uCosmic: { value: 0.2 },
+    uLight: { value: 0.62 },
     uOpacity: { value: 1 },
     uAspect: { value: 16 / 9 },
     uPixelRatio: { value: 1 },

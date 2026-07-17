@@ -29,8 +29,9 @@ function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLiveListening, setIsLiveListening] = useState(false);
   const [liveStyle, setLiveStyle] = useState('livingMandala');
-  const [liveTrance, setLiveTrance] = useState(0.5);
-  const [liveCosmic, setLiveCosmic] = useState(0.2);
+  const [liveFlow, setLiveFlow] = useState(0.5);
+  const [liveLight, setLiveLight] = useState(0.62);
+  const [liveColor, setLiveColor] = useState(0.2);
   const [isRecording, setIsRecording] = useState(false);
   const [isOfflineExporting, setIsOfflineExporting] = useState(false);
   const [offlineExportProgress, setOfflineExportProgress] = useState(0);
@@ -133,8 +134,9 @@ function App() {
       nameKey,
       ...visualDefaults,
       volume: 1.0,
-      trance: 0.5,
-      cosmic: 0.2,
+      flow: 0.5,
+      light: 0.62,
+      color: 0.2,
       buffer: audioBuffer,
     };
 
@@ -436,40 +438,61 @@ function App() {
 
                 <div className="mt-4">
                   <label className="text-xs text-gray-400 mb-1 flex justify-between">
-                    <span>{t('track.journey')}</span>
+                    <span>{t('track.flow')}</span>
                     <span className="text-gray-500">
-                      {liveTrance < 0.45 ? t('value.meditative') : (liveTrance > 0.55 ? t('value.ecstatic') : t('value.balanced'))}
+                      {liveFlow < 0.34 ? t('value.still') : (liveFlow > 0.67 ? t('value.intense') : t('value.fluid'))}
                     </span>
                   </label>
                   <input
                     type="range"
-                    aria-label={t('track.liveJourneyLabel')}
+                    aria-label={t('track.liveFlowLabel')}
                     min="0" max="1" step="0.01"
-                    value={liveTrance}
-                    onChange={(event) => setLiveTrance(parseFloat(event.target.value))}
+                    value={liveFlow}
+                    onChange={(event) => setLiveFlow(parseFloat(event.target.value))}
                     className="w-full h-1.5 rounded-lg appearance-none cursor-pointer"
-                    style={{ background: 'linear-gradient(to right, #30372f, #92704a, #ff5e8b)' }}
+                    style={{ background: 'linear-gradient(to right, #28302d, #517d70, #ef6a8f)' }}
                   />
                   <div className="mt-1 flex justify-between text-[9px] uppercase tracking-wider text-gray-600">
-                    <span>{t('value.meditative')}</span><span>{t('value.ecstatic')}</span>
+                    <span>{t('value.still')}</span><span>{t('value.intense')}</span>
                   </div>
                 </div>
 
                 <div className="mt-4">
                   <label className="text-xs text-gray-400 mb-1 flex justify-between">
-                    <span>{t('track.world')}</span>
+                    <span>{t('track.light')}</span>
                     <span className="text-gray-500">
-                      {liveCosmic < 0.45 ? t('value.darkEarthy') : (liveCosmic > 0.55 ? t('value.fullSpectrum') : t('value.transition'))}
+                      {liveLight < 0.34 ? t('value.shadow') : (liveLight > 0.67 ? t('value.radiant') : t('value.luminous'))}
                     </span>
                   </label>
                   <input
                     type="range"
-                    aria-label={t('track.liveWorldLabel')}
+                    aria-label={t('track.liveLightLabel')}
                     min="0" max="1" step="0.01"
-                    value={liveCosmic}
-                    onChange={(event) => setLiveCosmic(parseFloat(event.target.value))}
+                    value={liveLight}
+                    onChange={(event) => setLiveLight(parseFloat(event.target.value))}
                     className="w-full h-1.5 rounded-lg appearance-none cursor-pointer"
-                    style={{ background: 'linear-gradient(to right, #070604, #5d3b16, #b16a25, #00b7a8, #7757ff, #ff3e98)' }}
+                    style={{ background: 'linear-gradient(to right, #050505, #625c50, #f4ead2)' }}
+                  />
+                  <div className="mt-1 flex justify-between text-[9px] uppercase tracking-wider text-gray-600">
+                    <span>{t('value.shadow')}</span><span>{t('value.radiant')}</span>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <label className="text-xs text-gray-400 mb-1 flex justify-between">
+                    <span>{t('track.colour')}</span>
+                    <span className="text-gray-500">
+                      {liveColor < 0.34 ? t('value.earthy') : (liveColor > 0.67 ? t('value.cosmic') : t('value.mineral'))}
+                    </span>
+                  </label>
+                  <input
+                    type="range"
+                    aria-label={t('track.liveColourLabel')}
+                    min="0" max="1" step="0.01"
+                    value={liveColor}
+                    onChange={(event) => setLiveColor(parseFloat(event.target.value))}
+                    className="w-full h-1.5 rounded-lg appearance-none cursor-pointer"
+                    style={{ background: 'linear-gradient(to right, #2d1709, #b16a25, #00a99a, #7757ff, #ff3e98)' }}
                   />
                   <div className="mt-1 flex justify-between text-[9px] uppercase tracking-wider text-gray-600">
                     <span>{t('value.earthy')}</span><span>{t('value.cosmic')}</span>
@@ -589,8 +612,9 @@ function App() {
                 format={format}
                 isLiveListening={isLiveListening}
                 liveStyle={liveStyle}
-                liveTrance={liveTrance}
-                liveCosmic={liveCosmic}
+                liveFlow={liveFlow}
+                liveLight={liveLight}
+                liveColor={liveColor}
               />
            </div>
         </div>
