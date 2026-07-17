@@ -37,8 +37,10 @@ const IDLE_FEATURES = {
 };
 
 function dampAudioValue(current, target, delta, attack, release) {
-  const speed = target > current ? attack : release;
-  return current + (target - current) * (1 - Math.exp(-speed * delta));
+  const safeCurrent = Number.isFinite(current) ? current : 0;
+  const safeTarget = Number.isFinite(target) ? target : safeCurrent;
+  const speed = safeTarget > safeCurrent ? attack : release;
+  return safeCurrent + (safeTarget - safeCurrent) * (1 - Math.exp(-speed * delta));
 }
 
 const SMOOTHED_FEATURES = [
@@ -92,6 +94,32 @@ function sampleTrackJourney(profile, time) {
   return {
     intensity: timeline[lower].intensity + (timeline[upper].intensity - timeline[lower].intensity) * mix,
     novelty: timeline[lower].novelty + (timeline[upper].novelty - timeline[lower].novelty) * mix,
+  };
+}
+
+function getTempoState(profile, timelineTime, features) {
+  const bpm = profile?.tempo?.bpm ?? 0;
+  const confidence = Math.max(0, Math.min(1, profile?.tempo?.confidence ?? 0));
+  if (!bpm || confidence < 0.12) {
+    return {
+      bpm: 0,
+      confidence: 0,
+      phase: 0,
+      pulse: features.beat ?? 0,
+      speed: 1,
+    };
+  }
+  const period = 60 / bpm;
+  const offset = profile?.tempo?.offset ?? 0;
+  const cycles = (Math.max(0, timelineTime) - offset) / period;
+  const phase = ((cycles % 1) + 1) % 1;
+  const tempoPulse = Math.exp(-phase * 7.5);
+  return {
+    bpm,
+    confidence,
+    phase,
+    pulse: tempoPulse * confidence + (features.beat ?? 0) * (1 - confidence),
+    speed: 1 + (Math.max(0.58, Math.min(1.55, bpm / 110)) - 1) * confidence,
   };
 }
 
@@ -301,7 +329,7 @@ export class VisualizerEngine {
       }
 
       const { track } = desired;
-      obj.position = track.position;
+      obj.position = 'background';
       obj.targetTrance = track.flow ?? track.trance ?? 0.5;
       obj.targetLight = track.light ?? 0.62;
       obj.targetCosmic = track.color ?? track.cosmic ?? 0.2;
@@ -313,8 +341,8 @@ export class VisualizerEngine {
         ? THREE.AdditiveBlending
         : THREE.NormalBlending;
       obj.mesh.material.needsUpdate = true;
-      this.setPosition(obj.mesh, track.position);
-      this.configureLayerMask(obj, track.position);
+      this.setPosition(obj.mesh, 'background');
+      this.configureLayerMask(obj, 'background');
       if (obj.uniforms.uAspect) obj.uniforms.uAspect.value = this.aspect;
       if (obj.uniforms.uBlueprintPhase) obj.uniforms.uBlueprintPhase.value = obj.blueprint?.palettePhase ?? 0;
       if (obj.uniforms.uDefinitionBias) obj.uniforms.uDefinitionBias.value = obj.blueprint?.definitionBias ?? 0.65;
@@ -420,6 +448,9 @@ export class VisualizerEngine {
       obj.visualTime = 0;
       obj.journey = 0;
       obj.journeyFeatures = null;
+      obj.structurePeakHz1 = 0;
+      obj.structurePeakHz2 = 0;
+      obj.structurePeakStrength2 = 0;
       obj.extractor = new FeatureExtractor(obj.profile);
       obj.director = new ResonanceDirector(obj.blueprint?.fingerprint ?? id);
       obj.sand?.reset();
@@ -455,6 +486,7 @@ export class VisualizerEngine {
         position: obj.position,
         flow: Number((obj.trance ?? obj.smoothAudio?.trance ?? 0.5).toFixed(3)),
         light: Number((obj.light ?? obj.targetLight ?? 0.62).toFixed(3)),
+        bpm: obj.profile?.tempo?.bpm ?? undefined,
         visualTime: Number((obj.visualTime ?? 0).toFixed(3)),
         serpentTravel: obj.style === 'serpent'
           ? Number((obj.travelTime ?? 0).toFixed(3))
@@ -526,17 +558,45 @@ export class VisualizerEngine {
       const features = smoothJourneyFeatures(obj, rawFeatures, delta, dynamics);
       const uniforms = obj.uniforms;
       const trackJourney = sampleTrackJourney(obj.profile, timelineTime);
+      const tempo = getTempoState(obj.profile, timelineTime, features);
+
+      const structureSpeed = 0.42 + obj.trance * 0.95;
+      const peakHz1 = features.peakHz1 ?? features.dominantHz ?? 110;
+      const peakHz2 = features.peakHz2 ?? peakHz1;
+      if (!obj.structurePeakHz1) obj.structurePeakHz1 = peakHz1;
+      if (!obj.structurePeakHz2) obj.structurePeakHz2 = peakHz2;
+      obj.structurePeakHz1 = dampAudioValue(
+        obj.structurePeakHz1,
+        peakHz1,
+        delta,
+        structureSpeed,
+        structureSpeed,
+      );
+      obj.structurePeakHz2 = dampAudioValue(
+        obj.structurePeakHz2,
+        peakHz2,
+        delta,
+        structureSpeed * 0.8,
+        structureSpeed * 0.8,
+      );
+      obj.structurePeakStrength2 = dampAudioValue(
+        obj.structurePeakStrength2,
+        features.peakStrength2 ?? 0,
+        delta,
+        structureSpeed,
+        structureSpeed * 0.7,
+      );
 
       const movementEnergy = features.level * 0.35
         + features.spectralLow * 0.2
         + features.spectralMid * 0.28
         + features.spectralHigh * 0.17;
-      obj.visualTime += delta * (0.018 + dynamics.energy * 0.12
-        + movementEnergy * (0.035 + dynamics.energy * 0.65)
-        + features.flux * 0.18 * dynamics.energy);
+      obj.visualTime += delta * (0.012 + tempo.speed * (
+        0.018 + dynamics.energy * 0.105
+        + movementEnergy * (0.014 + dynamics.energy * 0.16)
+      ));
       obj.journey += delta * ((features.centroid + features.pitch) * 0.5 - 0.28)
-        * (0.006 + dynamics.energy * 0.064)
-        + features.onset * (0.0005 + dynamics.energy * 0.008);
+        * (0.004 + dynamics.energy * 0.042) * tempo.speed;
 
       if (uniforms.uTime) uniforms.uTime.value = obj.visualTime;
       if (uniforms.uSub) uniforms.uSub.value = features.sub;
@@ -554,16 +614,19 @@ export class VisualizerEngine {
       if (uniforms.uLevelSlow) uniforms.uLevelSlow.value = features.levelSlow ?? features.level;
       if (uniforms.uPresence) uniforms.uPresence.value = features.presence ?? features.level;
       if (uniforms.uBeat) uniforms.uBeat.value = features.beat;
+      if (uniforms.uBeatPhase) uniforms.uBeatPhase.value = tempo.phase;
+      if (uniforms.uBeatPulse) uniforms.uBeatPulse.value = tempo.pulse;
+      if (uniforms.uTempoBpm) uniforms.uTempoBpm.value = tempo.bpm;
       if (uniforms.uOnset) uniforms.uOnset.value = features.onset;
       if (uniforms.uFlux) uniforms.uFlux.value = features.flux;
       if (uniforms.uCentroid) uniforms.uCentroid.value = features.centroid;
       if (uniforms.uPitch) uniforms.uPitch.value = features.pitch;
       if (uniforms.uAbsolutePitch) uniforms.uAbsolutePitch.value = features.absolutePitch;
       if (uniforms.uDominantHz) uniforms.uDominantHz.value = features.dominantHz ?? 110;
-      if (uniforms.uPeakHz1) uniforms.uPeakHz1.value = features.peakHz1 ?? features.dominantHz ?? 110;
-      if (uniforms.uPeakHz2) uniforms.uPeakHz2.value = features.peakHz2 ?? features.dominantHz ?? 220;
+      if (uniforms.uPeakHz1) uniforms.uPeakHz1.value = obj.structurePeakHz1;
+      if (uniforms.uPeakHz2) uniforms.uPeakHz2.value = obj.structurePeakHz2;
       if (uniforms.uPeakStrength1) uniforms.uPeakStrength1.value = features.peakStrength1 ?? 0.5;
-      if (uniforms.uPeakStrength2) uniforms.uPeakStrength2.value = features.peakStrength2 ?? 0;
+      if (uniforms.uPeakStrength2) uniforms.uPeakStrength2.value = obj.structurePeakStrength2;
       if (uniforms.uSpread) uniforms.uSpread.value = features.spread;
       if (uniforms.uTonality) uniforms.uTonality.value = features.tonality;
       if (uniforms.uJourney) uniforms.uJourney.value = obj.journey;
@@ -578,7 +641,13 @@ export class VisualizerEngine {
       if (uniforms.uSectionNovelty) uniforms.uSectionNovelty.value = trackJourney.novelty;
 
       if (obj.style === 'chladni') {
-        const resonance = obj.director.update(features, delta, dynamics.energy);
+        const structuralFeatures = {
+          ...features,
+          peakHz1: obj.structurePeakHz1,
+          peakHz2: obj.structurePeakHz2,
+          peakStrength2: obj.structurePeakStrength2,
+        };
+        const resonance = obj.director.update(structuralFeatures, delta, obj.trance);
         uniforms.uFamilyA.value = resonance.familyA;
         uniforms.uFamilyB.value = resonance.familyB;
         uniforms.uFamilyC.value = resonance.familyC;
@@ -611,11 +680,12 @@ export class VisualizerEngine {
           uniforms.uSandTexture.value = obj.sand.update(
             this.renderer,
             resonance,
-            features,
+            structuralFeatures,
             delta,
             this.aspect,
             obj.blueprint?.palettePhase ?? 0,
             obj.visualTime,
+            obj.trance,
           );
           uniforms.uSandReady.value = 1;
         }

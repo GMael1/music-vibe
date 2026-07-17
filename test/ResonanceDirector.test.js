@@ -91,3 +91,15 @@ test('keeps modal energy continuous across resonance atlas boundaries', () => {
 
   assert.ok(difference < 0.02);
 });
+
+test('keeps valid modal weights when an analyser peak is not finite', () => {
+  const result = new ResonanceDirector('invalid-peak').update(tone(440, {
+    peakHz2: Number.NaN,
+    peakStrength2: Number.NaN,
+    spread: Number.NaN,
+  }), 1 / 60);
+  const weights = [result.weightA, result.weightB, result.weightC, result.weightD];
+
+  assert.ok(weights.every(Number.isFinite));
+  assert.ok(Math.abs(weights.reduce((total, weight) => total + weight, 0) - 1) < 1e-6);
+});

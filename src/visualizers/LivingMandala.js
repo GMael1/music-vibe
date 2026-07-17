@@ -26,6 +26,8 @@ export function getLivingMandalaMaterial() {
       uniform float uLevelSlow;
       uniform float uPresence;
       uniform float uFlux;
+      uniform float uBeatPhase;
+      uniform float uBeatPulse;
       uniform float uPeakHz1;
       uniform float uPeakHz2;
       uniform float uPeakStrength2;
@@ -90,13 +92,13 @@ export function getLivingMandalaMaterial() {
         vec2 screen = vUv * 2.0 - 1.0;
         vec2 p = screen;
         p.x *= uAspect;
-        p = rotate2d(uJourney * 0.18 + uTime * 0.018) * p;
+        p = rotate2d(uJourney * 0.12 + uTime * 0.014) * p;
         float radius = length(p);
         float angle = atan(p.y, p.x);
 
         float frequencyA = clamp(log(max(55.0, uPeakHz1) / 55.0) / log(5000.0 / 55.0), 0.0, 1.0);
         float frequencyB = clamp(log(max(55.0, uPeakHz2) / 55.0) / log(5000.0 / 55.0), 0.0, 1.0);
-        float segmentPosition = 3.0 + frequencyA * 7.0 + frequencyB * uPeakStrength2 * 1.5;
+        float segmentPosition = 3.0 + frequencyA * 7.0 + frequencyB * uPeakStrength2 * 0.72;
         float segmentBase = floor(segmentPosition);
         float segmentBlend = smoothstep(0.08, 0.92, fract(segmentPosition));
         vec2 foldedA = mandalaDomain(p, segmentBase);
@@ -105,11 +107,13 @@ export function getLivingMandalaMaterial() {
         vec2 qA = mix(p, foldedA, symmetry);
         vec2 qB = mix(p, foldedB, symmetry);
 
-        float breath = sin(radius * (12.0 + uSpectralLow * 10.0)
-          - uTime * (0.08 + uBass * mix(0.08, 0.42, uEnergy)))
-          * (0.008 + uSpectralLow * mix(0.012, 0.045, uEnergy));
-        qA *= 1.0 + breath;
-        qB *= 1.0 + breath;
+        float tempoWave = sin(TAU * uBeatPhase);
+        float breath = sin(radius * (12.0 + uSpectralLow * 5.0) - uTime * 0.09)
+          * (0.0015 + uSpectralLow * mix(0.002, 0.008, uEnergy))
+          + tempoWave * uBeatPulse * 0.0018 * uEnergy;
+        vec2 radialDirection = p / max(radius, 0.001);
+        qA += radialDirection * breath;
+        qB += radialDirection * breath;
         vec2 flowA = vec2(
           fbm(qA * (2.0 + uMid) + vec2(uTime * 0.11, uJourney)),
           fbm(qA * (2.3 + uTreble) - vec2(uJourney, uTime * 0.09))
@@ -118,10 +122,10 @@ export function getLivingMandalaMaterial() {
           fbm(qB * (2.0 + uMid) + vec2(uTime * 0.11, uJourney)),
           fbm(qB * (2.3 + uTreble) - vec2(uJourney, uTime * 0.09))
         ) - 0.5;
-        float morphActivity = 0.08 + uLevelSlow * 0.16 + uRelativeLevel * 0.22
-          + uFlux * 0.12 + uSectionNovelty * 0.08;
-        qA += flowA * mix(0.07, morphActivity, uEnergy);
-        qB += flowB * mix(0.07, morphActivity, uEnergy);
+        float morphActivity = 0.055 + uLevelSlow * 0.11 + uRelativeLevel * 0.07
+          + uFlux * 0.025 + uSectionNovelty * 0.035;
+        qA += flowA * mix(0.035, morphActivity, uEnergy);
+        qB += flowB * mix(0.035, morphActivity, uEnergy);
 
         float cellA1 = fbm(qA * (3.2 + uSpectralHigh * 2.8) + flowA * 1.4);
         float cellA2 = fbm(rotate2d(1.57) * qA * 3.8 - flowA * 1.2);
@@ -129,7 +133,7 @@ export function getLivingMandalaMaterial() {
         float cellB2 = fbm(rotate2d(1.57) * qB * 3.8 - flowB * 1.2);
         float reactionA = abs(cellA1 - cellA2);
         float reactionB = abs(cellB1 - cellB2);
-        float definition = 3.2 + uRelativeLevel * 2.4 + uTonality * 1.2;
+        float definition = 3.35 + uLevelSlow * 0.82 + uTonality * 1.05;
         float ridgeA = 1.0 - abs(sin((reactionA + radius * 0.22)
           * (12.0 + frequencyA * 10.0 + uSpectralMid * 5.0)));
         float ridgeB = 1.0 - abs(sin((reactionB + radius * 0.22)
@@ -164,8 +168,8 @@ export function getLivingMandalaMaterial() {
         vec3 cosmic = spectralPalette(cellA + cellB * 0.42 + radius * 0.16);
         vec3 glow = mix(earthGlow, cosmic, uCosmic);
         float lightFloor = mix(0.24, 0.72, uLight);
-        float gate = lightFloor + uPresence * 0.12 + uRelativeLevel * 0.48
-          + uSectionIntensity * 0.1;
+        float gate = lightFloor + uPresence * 0.1 + uLevelSlow * 0.34
+          + uSectionIntensity * 0.08 + uBeatPulse * 0.035;
         vec3 color = earthBase;
         color += glow * membrane * gate * (0.92 + uLevelSlow * 0.48 + uTrance * 0.25);
         color += glow * pow(membrane, 0.28) * gate * (0.36 + uLevelSlow * 0.12);
@@ -181,7 +185,7 @@ export function getLivingMandalaMaterial() {
           * dormantStructure * (0.56 + uRelativeLevel * 0.48);
         color *= mix(0.78, 1.68, uLight) + uRelativeLevel * 0.28;
         color *= smoothstep(1.45, 0.18, length(screen));
-        color += (hash21(gl_FragCoord.xy + uTime * 19.0) - 0.5) * 0.008 * gate;
+        color += (hash21(gl_FragCoord.xy + uTime * 7.0) - 0.5) * 0.004 * gate;
         gl_FragColor = vec4(color, uOpacity * luminousLayerCoverage(color, vUv));
       }
     `,

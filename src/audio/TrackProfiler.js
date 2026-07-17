@@ -1,5 +1,5 @@
 export const FFT_SIZE = 2048;
-export const ANALYSIS_VERSION = 2;
+export const ANALYSIS_VERSION = 3;
 
 const MIN_FRAMES = 48;
 const MAX_FRAMES = 240;
@@ -7,6 +7,8 @@ const LOG_BAND_COUNT = 32;
 const MIN_FREQUENCY = 30;
 const MAX_FREQUENCY = 16000;
 const SILENCE_DB = -120;
+const MIN_TEMPO = 55;
+const MAX_TEMPO = 180;
 
 const clamp01 = value => Math.max(0, Math.min(1, value));
 
@@ -21,6 +23,123 @@ export function percentile(values, amount) {
 
 function amplitudeToDb(value) {
   return value > 1e-6 ? Math.max(SILENCE_DB, 20 * Math.log10(value)) : SILENCE_DB;
+}
+
+export function estimateTempo(audioBuffer) {
+  if (!audioBuffer?.length || !audioBuffer?.sampleRate) {
+    return { bpm: null, confidence: 0, beatPeriod: 0, offset: 0 };
+  }
+
+  const sampleRate = audioBuffer.sampleRate;
+  const channels = Array.from(
+    { length: Math.max(1, audioBuffer.numberOfChannels ?? 1) },
+    (_, index) => audioBuffer.getChannelData(index),
+  );
+  const hopSize = Math.max(128, Math.round(sampleRate / 100));
+  const frameSize = hopSize * 2;
+  const analysisRate = sampleRate / hopSize;
+  const frameCount = Math.max(0, Math.floor((audioBuffer.length - frameSize) / hopSize) + 1);
+  if (frameCount < analysisRate * 3) {
+    return { bpm: null, confidence: 0, beatPeriod: 0, offset: 0 };
+  }
+
+  const envelope = new Float64Array(frameCount);
+  let previousLogEnergy = -20;
+  let previousLogTransient = -20;
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    const start = frame * hopSize;
+    let energy = 0;
+    let transientEnergy = 0;
+    let previousSample = 0;
+    for (let index = 0; index < frameSize; index += 1) {
+      let sample = 0;
+      for (const channel of channels) sample += channel[start + index] ?? 0;
+      sample /= channels.length;
+      const difference = sample - previousSample;
+      energy += sample * sample;
+      transientEnergy += difference * difference;
+      previousSample = sample;
+    }
+    const logEnergy = Math.log(1e-10 + energy / frameSize);
+    const logTransient = Math.log(1e-10 + transientEnergy / frameSize);
+    envelope[frame] = Math.max(0, logEnergy - previousLogEnergy)
+      + Math.max(0, logTransient - previousLogTransient) * 0.42;
+    previousLogEnergy = logEnergy;
+    previousLogTransient = logTransient;
+  }
+
+  const localWindow = Math.max(3, Math.round(analysisRate * 0.8));
+  let localTotal = 0;
+  let onsetTotal = 0;
+  let onsetSquareTotal = 0;
+  for (let index = 0; index < envelope.length; index += 1) {
+    localTotal += envelope[index];
+    if (index >= localWindow) localTotal -= envelope[index - localWindow];
+    const localMean = localTotal / Math.min(localWindow, index + 1);
+    const whitened = Math.max(0, envelope[index] - localMean * 0.72);
+    envelope[index] = whitened;
+    onsetTotal += whitened;
+    onsetSquareTotal += whitened * whitened;
+  }
+  if (onsetTotal < 1e-5) {
+    return { bpm: null, confidence: 0, beatPeriod: 0, offset: 0 };
+  }
+
+  const minLag = Math.max(1, Math.round((analysisRate * 60) / MAX_TEMPO));
+  const maxLag = Math.min(envelope.length - 2, Math.round((analysisRate * 60) / MIN_TEMPO));
+  const correlations = new Float64Array(maxLag + 1);
+  for (let lag = minLag; lag <= maxLag; lag += 1) {
+    let correlation = 0;
+    let energyA = 0;
+    let energyB = 0;
+    for (let index = lag; index < envelope.length; index += 1) {
+      const a = envelope[index];
+      const b = envelope[index - lag];
+      correlation += a * b;
+      energyA += a * a;
+      energyB += b * b;
+    }
+    correlations[lag] = correlation / Math.max(1e-8, Math.sqrt(energyA * energyB));
+  }
+
+  let bestLag = minLag;
+  let bestScore = -Infinity;
+  for (let lag = minLag; lag <= maxLag; lag += 1) {
+    const slowerHarmonic = lag * 2 <= maxLag ? correlations[lag * 2] : 0;
+    const fasterHarmonic = Math.round(lag * 0.5) >= minLag
+      ? correlations[Math.round(lag * 0.5)]
+      : 0;
+    const score = correlations[lag] + slowerHarmonic * 0.18 + fasterHarmonic * 0.08;
+    if (score > bestScore) {
+      bestScore = score;
+      bestLag = lag;
+    }
+  }
+
+  const bpm = (analysisRate * 60) / bestLag;
+  const pulseClarity = Math.min(1, onsetTotal / Math.sqrt(onsetSquareTotal * envelope.length + 1e-8));
+  const confidence = clamp01(((correlations[bestLag] - 0.12) / 0.64) * (0.55 + pulseClarity * 0.45));
+  if (confidence < 0.12) {
+    return { bpm: null, confidence, beatPeriod: 0, offset: 0 };
+  }
+
+  let bestPhase = 0;
+  let bestPhaseEnergy = -Infinity;
+  for (let phase = 0; phase < bestLag; phase += 1) {
+    let phaseEnergy = 0;
+    for (let index = phase; index < envelope.length; index += bestLag) phaseEnergy += envelope[index];
+    if (phaseEnergy > bestPhaseEnergy) {
+      bestPhaseEnergy = phaseEnergy;
+      bestPhase = phase;
+    }
+  }
+
+  return {
+    bpm: Math.round(bpm * 10) / 10,
+    confidence,
+    beatPeriod: 60 / bpm,
+    offset: bestPhase / analysisRate,
+  };
 }
 
 function fnv1a(hash, value) {
@@ -286,6 +405,7 @@ export function profileAudioBuffer(audioBuffer) {
   const highCandidateHz = percentile(musicalFrames.map(frame => frame.highHz), 0.8);
   const highHz = Math.max(lowHz + 160, Math.min(highCandidateHz, Math.max(600, medianCentroidHz * 3.4), 10000));
   const timeline = buildTimeline(frames, quietDb, loudDb);
+  const tempo = estimateTempo(audioBuffer);
 
   return {
     analysisVersion: ANALYSIS_VERSION,
@@ -308,6 +428,7 @@ export function profileAudioBuffer(audioBuffer) {
     },
     persistentPeaks: findPersistentPeaks(musicalFrames),
     averageTonality: percentile(musicalFrames.map(frame => 1 - frame.flatness), 0.5),
+    tempo,
     timeline,
     sections: buildSections(timeline, duration),
     frameCount: frames.length,

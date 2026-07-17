@@ -1,4 +1,8 @@
-const clamp01 = value => Math.max(0, Math.min(1, value));
+const clamp01 = value => (Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0);
+
+function positiveFrequency(value, fallback) {
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
 
 function hashString(value) {
   let hash = 2166136261;
@@ -9,23 +13,25 @@ function hashString(value) {
   return (hash >>> 0) / 4294967295;
 }
 
-// A compact, ordered atlas of resonant plate modes. Frequency always selects the
-// topology; the seed only changes the presentation of equivalent orientations.
-export const PLATE_MODE_ATLAS = [
-  [78, 0, 2, 3], [112, 1, 2, 4], [148, 0, 3, 4], [184, 2, 2, 5],
-  [224, 0, 3, 5], [270, 3, 4, 5], [322, 1, 3, 6], [382, 0, 4, 6],
-  [450, 2, 5, 6], [528, 0, 4, 7], [616, 4, 5, 7], [716, 1, 6, 7],
-  [830, 0, 5, 8], [958, 2, 6, 8], [1102, 0, 7, 8], [1264, 3, 6, 9],
-  [1446, 1, 7, 9], [1650, 0, 8, 9], [1878, 4, 7, 10], [2134, 2, 8, 10],
-  [2422, 0, 9, 10], [2746, 3, 8, 11], [3110, 1, 9, 11], [3520, 0, 10, 11],
-  [3980, 4, 9, 12], [4496, 2, 10, 12], [5080, 0, 11, 12], [5740, 3, 10, 13],
-].map(([frequency, family, modeX, modeY], index) => ({
-  frequency,
-  family,
-  modeX,
-  modeY,
-  index,
-}));
+// One fixed virtual square plate. For an isotropic thin square plate, modal
+// frequency ordering follows m² + n². The 18 Hz factor calibrates the virtual
+// plate's size/material while keeping the ordering physically consistent.
+// Degenerate m/n swaps are represented by the antisymmetric field in the shader.
+function createSquarePlateAtlas() {
+  const byFrequency = new Map();
+  for (let modeX = 1; modeX <= 17; modeX += 1) {
+    for (let modeY = modeX + 1; modeY <= 18; modeY += 1) {
+      const frequency = 18 * (modeX * modeX + modeY * modeY);
+      if (frequency < 70 || frequency > 6000 || byFrequency.has(frequency)) continue;
+      byFrequency.set(frequency, { frequency, family: 0, modeX, modeY });
+    }
+  }
+  return [...byFrequency.values()]
+    .sort((a, b) => a.frequency - b.frequency)
+    .map((mode, index) => ({ ...mode, index }));
+}
+
+export const PLATE_MODE_ATLAS = createSquarePlateAtlas();
 
 function bracketFrequency(frequency) {
   const safeFrequency = Math.max(PLATE_MODE_ATLAS[0].frequency, frequency || PLATE_MODE_ATLAS[0].frequency);
@@ -54,11 +60,15 @@ export class ResonanceDirector {
     this.smoothedSecondaryWeight = 0;
   }
 
-  update(features, delta = 1 / 60) {
+  update(features, delta = 1 / 60, flow = 0.5) {
     const dt = Math.max(1 / 240, Math.min(delta, 0.1));
-    const primaryHz = features.peakHz1 || features.dominantHz || 110;
-    const secondaryHz = features.peakHz2 || primaryHz;
-    const smoothing = 1 - Math.exp(-dt * 7);
+    const primaryHz = positiveFrequency(
+      features.peakHz1,
+      positiveFrequency(features.dominantHz, 110),
+    );
+    const secondaryHz = positiveFrequency(features.peakHz2, primaryHz);
+    const structuralSpeed = 0.38 + clamp01(flow) * 0.82;
+    const smoothing = 1 - Math.exp(-dt * structuralSpeed);
     if (!this.smoothedHz) this.smoothedHz = primaryHz;
     else this.smoothedHz += (primaryHz - this.smoothedHz) * smoothing;
     if (!this.smoothedSecondaryHz) this.smoothedSecondaryHz = secondaryHz;
@@ -67,16 +77,18 @@ export class ResonanceDirector {
     const frequencyRatio = Math.max(this.smoothedHz, this.smoothedSecondaryHz)
       / Math.max(1, Math.min(this.smoothedHz, this.smoothedSecondaryHz));
     const separation = clamp01(Math.log2(Math.max(1, frequencyRatio)) / 1.35);
-    const secondaryTarget = (features.peakStrength2 ?? 0) * separation;
+    const secondaryTarget = clamp01(features.peakStrength2) * separation;
     this.smoothedSecondaryWeight += (secondaryTarget - this.smoothedSecondaryWeight)
-      * (1 - Math.exp(-dt * 3.2));
+      * (1 - Math.exp(-dt * (0.42 + clamp01(flow) * 0.58)));
     const primaryBracket = bracketFrequency(this.smoothedHz);
     const secondaryBracket = bracketFrequency(this.smoothedSecondaryHz);
     const modeA = primaryBracket.a;
     const modeB = primaryBracket.b;
     const modeC = secondaryBracket.a;
     const modeD = secondaryBracket.b;
-    const secondaryWeight = clamp01(this.smoothedSecondaryWeight * (0.72 + (features.spread ?? 0) * 0.28));
+    const secondaryWeight = clamp01(
+      this.smoothedSecondaryWeight * (0.72 + clamp01(features.spread) * 0.28),
+    );
     const primaryWeight = 1 - secondaryWeight;
     const weights = [
       primaryWeight * (1 - primaryBracket.mix),
@@ -131,7 +143,7 @@ export class ResonanceDirector {
       modeFrequencyB: b.frequency,
       modeFrequencyC: c.frequency,
       modeFrequencyD: d.frequency,
-      instability: clamp01(1 - Math.max(weightA, weightB, weightC, weightD)),
+      instability: clamp01((1 - Math.max(weightA, weightB, weightC, weightD)) * 0.72),
     };
   }
 }

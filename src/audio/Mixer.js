@@ -59,6 +59,7 @@ export class Mixer {
     if (this.tracks.size === 1) {
        this.pausedAt = 0;
     }
+    return profile;
   }
 
   subscribe(listener) {

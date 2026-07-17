@@ -6,7 +6,14 @@ export default function TrackItem({ track, onRemove, onUpdate, t }) {
   return (
     <div className="bg-surface/50 border border-border rounded-lg p-3 backdrop-blur-sm transition-all hover:bg-surface">
       <div className="flex justify-between items-center mb-2">
-        <span className="font-medium text-sm truncate flex-1" title={trackName}>{trackName}</span>
+        <div className="min-w-0 flex-1">
+          <span className="font-medium text-sm truncate block" title={trackName}>{trackName}</span>
+          {track.tempoBpm && track.tempoConfidence >= 0.12 ? (
+            <span className="text-[10px] uppercase tracking-wider text-cyan-300/70">
+              {t('track.detectedTempo', { bpm: Math.round(track.tempoBpm) })}
+            </span>
+          ) : null}
+        </div>
         <button aria-label={t('track.remove', { name: trackName })} onClick={() => onRemove(track.id)} className="text-gray-400 hover:text-red-400 p-1 rounded-md transition-colors">
           <Trash2 className="w-4 h-4" />
         </button>
@@ -76,22 +83,6 @@ export default function TrackItem({ track, onRemove, onUpdate, t }) {
           </div>
         </div>
 
-        {/* Position Selector */}
-        <div>
-          <label className="text-xs text-gray-400 mb-1 block">{t('track.position')}</label>
-          <select 
-            value={track.position}
-            onChange={(e) => onUpdate(track.id, { position: e.target.value })}
-            className="w-full bg-black/30 border border-white/10 rounded-md text-xs p-1.5 focus:border-primary outline-none"
-          >
-            <option value="background">{t('position.background')}</option>
-            <option value="center">{t('position.center')}</option>
-            <option value="top-left">{t('position.topLeft')}</option>
-            <option value="top-right">{t('position.topRight')}</option>
-            <option value="bottom-left">{t('position.bottomLeft')}</option>
-            <option value="bottom-right">{t('position.bottomRight')}</option>
-          </select>
-        </div>
           </>
         )}
 

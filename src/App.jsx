@@ -140,7 +140,9 @@ function App() {
       buffer: audioBuffer,
     };
 
-    globalMixer.addTrack(newTrack.id, audioBuffer);
+    const profile = globalMixer.addTrack(newTrack.id, audioBuffer);
+    newTrack.tempoBpm = profile?.tempo?.bpm ?? null;
+    newTrack.tempoConfidence = profile?.tempo?.confidence ?? 0;
     setTracks(prev => [...prev, newTrack]);
   };
 
