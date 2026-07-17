@@ -28,7 +28,7 @@ function App() {
   const [tracks, setTracks] = useState([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLiveListening, setIsLiveListening] = useState(false);
-  const [liveStyle, setLiveStyle] = useState('ritualCurrent');
+  const [liveStyle, setLiveStyle] = useState('livingMandala');
   const [liveTrance, setLiveTrance] = useState(0.5);
   const [liveCosmic, setLiveCosmic] = useState(0.2);
   const [isRecording, setIsRecording] = useState(false);
@@ -121,7 +121,7 @@ function App() {
     globalMixer.init();
     const audioBuffer = await globalMixer.decodeAudioData(arrayBuffer);
     const visualDefaults = {
-      visualStyle: 'ritualCurrent',
+      visualStyle: 'livingMandala',
       sceneRole: 'auto',
       position: 'background',
       opacity: 1,
@@ -429,12 +429,9 @@ function App() {
                   onChange={(e) => setLiveStyle(e.target.value)}
                   className="bg-black/50 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-gray-200 outline-none focus:border-primary"
                 >
-                  <option value="ritualCurrent">{t('style.ritualCurrent')}</option>
                   <option value="livingMandala">{t('style.livingMandala')}</option>
-                  <option value="obsidianOrganism">{t('style.obsidianOrganism')}</option>
                   <option value="psychedelic">{t('style.psychedelic')}</option>
                   <option value="chladni">{t('style.chladni')}</option>
-                  <option value="serpent">{t('style.serpent')}</option>
                 </select>
 
                 <div className="mt-4">

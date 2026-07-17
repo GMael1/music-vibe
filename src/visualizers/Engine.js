@@ -9,6 +9,7 @@ import { SerpentInfluenceRouter } from './SerpentInfluenceRouter.js';
 import { getRitualCurrentMaterial } from './RitualCurrent.js';
 import { getLivingMandalaMaterial } from './LivingMandala.js';
 import { getObsidianOrganismMaterial } from './ObsidianOrganism.js';
+import { SandSimulation } from './SandSimulation.js';
 import {
   getJourneyDynamics,
   getLayerMaskConfig,
@@ -175,6 +176,7 @@ export class VisualizerEngine {
       }
       if (obj.uniforms.uAspect) obj.uniforms.uAspect.value = this.aspect;
       if (obj.uniforms.uPixelRatio) obj.uniforms.uPixelRatio.value = pixelRatio;
+      obj.sand?.resize(width, height);
     }
   }
 
@@ -204,7 +206,7 @@ export class VisualizerEngine {
     const liveCosmic = liveDirection.cosmic ?? 0.2;
     const idleTrack = {
       id: '__ambient',
-      visualStyle: mode === 'live' ? liveStyle : 'ritualCurrent',
+      visualStyle: mode === 'live' ? liveStyle : 'livingMandala',
       position: 'background',
       opacity: 0.7,
       blendMode: 'normal',
@@ -239,6 +241,7 @@ export class VisualizerEngine {
         obj.mesh.geometry.dispose();
         obj.mesh.material.dispose();
         obj.router?.dispose();
+        obj.sand?.dispose();
         this.objects.delete(id);
       }
     }
@@ -264,6 +267,7 @@ export class VisualizerEngine {
         obj.cosmic = obj.targetCosmic;
         obj.blendSeed = visualSeed(id);
         if (obj.blueprint) obj.blendSeed = obj.blueprint.seed / 4294967295;
+        if (obj.sand) obj.sand.resize(this.canvas.width, this.canvas.height);
         this.scene.add(obj.mesh);
         this.objects.set(id, obj);
       }
@@ -334,7 +338,13 @@ export class VisualizerEngine {
     const mesh = data.objectType === 'points'
       ? new THREE.Points(data.geometry, data.material)
       : new THREE.Mesh(data.geometry, data.material);
-    return { mesh, uniforms: data.uniforms, style, position: 'center' };
+    return {
+      mesh,
+      uniforms: data.uniforms,
+      style,
+      position: 'center',
+      sand: style === 'chladni' ? new SandSimulation() : null,
+    };
   }
 
   createSerpentVisualizer() {
@@ -387,6 +397,7 @@ export class VisualizerEngine {
       obj.mesh.geometry.dispose();
       obj.mesh.material.dispose();
       obj.router?.dispose();
+      obj.sand?.dispose();
     }
     this.objects.clear();
     this.unsubscribeMixer?.();
@@ -401,6 +412,7 @@ export class VisualizerEngine {
       obj.journeyFeatures = null;
       obj.extractor = new FeatureExtractor(obj.profile);
       obj.director = new ResonanceDirector(obj.blueprint?.fingerprint ?? id);
+      obj.sand?.reset();
     }
   }
 
@@ -556,16 +568,44 @@ export class VisualizerEngine {
         const resonance = obj.director.update(features, delta, dynamics.energy);
         uniforms.uFamilyA.value = resonance.familyA;
         uniforms.uFamilyB.value = resonance.familyB;
+        uniforms.uFamilyC.value = resonance.familyC;
+        uniforms.uFamilyD.value = resonance.familyD;
         uniforms.uModeAX.value = resonance.modeAX;
         uniforms.uModeAY.value = resonance.modeAY;
         uniforms.uModeBX.value = resonance.modeBX;
         uniforms.uModeBY.value = resonance.modeBY;
+        uniforms.uModeCX.value = resonance.modeCX;
+        uniforms.uModeCY.value = resonance.modeCY;
+        uniforms.uModeDX.value = resonance.modeDX;
+        uniforms.uModeDY.value = resonance.modeDY;
         uniforms.uRotationA.value = resonance.rotationA;
         uniforms.uRotationB.value = resonance.rotationB;
+        uniforms.uRotationC.value = resonance.rotationC;
+        uniforms.uRotationD.value = resonance.rotationD;
         uniforms.uSeedA.value = resonance.seedA;
         uniforms.uSeedB.value = resonance.seedB;
+        uniforms.uSeedC.value = resonance.seedC;
+        uniforms.uSeedD.value = resonance.seedD;
         uniforms.uFamilyMix.value = resonance.mix;
+        uniforms.uModeWeights.value.set(
+          resonance.weightA,
+          resonance.weightB,
+          resonance.weightC,
+          resonance.weightD,
+        );
         if (uniforms.uModeInstability) uniforms.uModeInstability.value = resonance.instability;
+        if (obj.sand) {
+          uniforms.uSandTexture.value = obj.sand.update(
+            this.renderer,
+            resonance,
+            features,
+            delta,
+            this.aspect,
+            obj.blueprint?.palettePhase ?? 0,
+            obj.visualTime,
+          );
+          uniforms.uSandReady.value = 1;
+        }
       }
 
     }

@@ -21,12 +21,9 @@ export default function TrackItem({ track, onRemove, onUpdate, t }) {
             onChange={(e) => onUpdate(track.id, { visualStyle: e.target.value })}
             className="w-full bg-black/40 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-gray-300 outline-none"
           >
-          <option value="ritualCurrent">{t('style.ritualCurrent')}</option>
           <option value="livingMandala">{t('style.livingMandala')}</option>
-          <option value="obsidianOrganism">{t('style.obsidianOrganism')}</option>
           <option value="psychedelic">{t('style.psychedelic')}</option>
           <option value="chladni">{t('style.chladni')}</option>
-          <option value="serpent">{t('style.serpent')}</option>
         </select>
         </div>
 

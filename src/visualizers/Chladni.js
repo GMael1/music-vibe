@@ -14,12 +14,25 @@ export function getChladniMaterial() {
     uModeAY: { value: 5 },
     uModeBX: { value: 3 },
     uModeBY: { value: 5 },
+    uFamilyC: { value: 0 },
+    uFamilyD: { value: 0 },
+    uModeCX: { value: 3 },
+    uModeCY: { value: 5 },
+    uModeDX: { value: 3 },
+    uModeDY: { value: 5 },
     uRotationA: { value: 0 },
     uRotationB: { value: 0 },
     uSeedA: { value: 0 },
     uSeedB: { value: 0 },
+    uRotationC: { value: 0 },
+    uRotationD: { value: 0 },
+    uSeedC: { value: 0 },
+    uSeedD: { value: 0 },
     uFamilyMix: { value: 0 },
+    uModeWeights: { value: new THREE.Vector4(1, 0, 0, 0) },
     uModeInstability: { value: 0 },
+    uSandTexture: { value: null },
+    uSandReady: { value: 0 },
   };
   uniforms.uOpacity.value = 0.94;
 
@@ -62,12 +75,26 @@ export function getChladniMaterial() {
     uniform float uModeAY;
     uniform float uModeBX;
     uniform float uModeBY;
+    uniform float uFamilyC;
+    uniform float uFamilyD;
+    uniform float uModeCX;
+    uniform float uModeCY;
+    uniform float uModeDX;
+    uniform float uModeDY;
     uniform float uRotationA;
     uniform float uRotationB;
     uniform float uSeedA;
     uniform float uSeedB;
+    uniform float uRotationC;
+    uniform float uRotationD;
+    uniform float uSeedC;
+    uniform float uSeedD;
     uniform float uFamilyMix;
+    uniform vec4 uModeWeights;
     uniform float uModeInstability;
+    uniform sampler2D uSandTexture;
+    uniform float uSandReady;
+    uniform float uPixelRatio;
     uniform float uBlueprintPhase;
     uniform float uDefinitionBias;
     uniform float uDynamicGain;
@@ -170,7 +197,8 @@ export function getChladniMaterial() {
     float sandDensity(vec2 warpedP) {
       float fieldA = resonanceField(warpedP, uFamilyA, uModeAX, uModeAY, uRotationA, uSeedA);
       float fieldB = resonanceField(warpedP, uFamilyB, uModeBX, uModeBY, uRotationB, uSeedB);
-      float familyBlend = smoothstep(0.03, 0.97, uFamilyMix);
+      float fieldC = resonanceField(warpedP, uFamilyC, uModeCX, uModeCY, uRotationC, uSeedC);
+      float fieldD = resonanceField(warpedP, uFamilyD, uModeDX, uModeDY, uRotationD, uSeedD);
       float definition = mix(4.2, 12.5, clamp(
         uDefinitionBias * 0.38 + uRelativeLevel * 0.42 + uTonality * 0.16
           + uSectionIntensity * 0.12,
@@ -179,8 +207,9 @@ export function getChladniMaterial() {
       ));
       float densityA = exp(-abs(fieldA) * definition);
       float densityB = exp(-abs(fieldB) * definition);
-      float coexistence = min(densityA, densityB) * uModeInstability * 0.42;
-      return clamp(mix(densityA, densityB, familyBlend) + coexistence, 0.0, 1.0);
+      float densityC = exp(-abs(fieldC) * definition);
+      float densityD = exp(-abs(fieldD) * definition);
+      return clamp(dot(vec4(densityA, densityB, densityC, densityD), uModeWeights), 0.0, 1.0);
     }
 
     void main() {
@@ -191,23 +220,31 @@ export function getChladniMaterial() {
       p = rotate2d((uBlueprintPhase - 0.5) * 0.18) * p;
 
       vec2 warpedP = fluidWarp(p);
-      float density = sandDensity(warpedP);
-      float epsilon = 0.0035;
-      float densityX = sandDensity(warpedP + vec2(epsilon, 0.0));
-      float densityY = sandDensity(warpedP + vec2(0.0, epsilon));
+      float proceduralDensity = sandDensity(warpedP);
+      float persistentDensity = texture2D(uSandTexture, vUv).r;
+      float density = mix(proceduralDensity, persistentDensity, uSandReady);
+      vec2 textureStep = vec2(1.0 / 720.0, 1.0 / 420.0);
+      float densityX = mix(
+        sandDensity(warpedP + vec2(0.0035, 0.0)),
+        texture2D(uSandTexture, vUv + vec2(textureStep.x, 0.0)).r,
+        uSandReady
+      );
+      float densityY = mix(
+        sandDensity(warpedP + vec2(0.0, 0.0035)),
+        texture2D(uSandTexture, vUv + vec2(0.0, textureStep.y)).r,
+        uSandReady
+      );
       vec3 normal = normalize(vec3((density - densityX) * 2.8, (density - densityY) * 2.8, 0.055));
       vec2 gradient = normalize(vec2(density - densityX, density - densityY) + vec2(0.00001));
       vec2 tangent = vec2(-gradient.y, gradient.x);
 
-      float migration = 0.08 + uRelativeLevel * 1.8 + uLevelFast * 0.72
-        + uFlux * 1.2 + uModeInstability * 0.4 + uSectionNovelty * 0.36;
-      float grainTravel = uTime * migration * mix(0.18, 1.0, uEnergy);
-      vec2 grainGrid = floor(vUv * vec2(1900.0, 1080.0) + warpedP * 19.0 + tangent * grainTravel);
+      vec2 grainGrid = floor(gl_FragCoord.xy / max(1.0, uPixelRatio * 0.72)
+        + warpedP * 13.0 + tangent * density * 1.8);
       float grainRandom = hash21(grainGrid);
-      float grainThreshold = 0.8 - density * (0.48 + uRelativeLevel * 0.16);
-      float individualGrains = smoothstep(grainThreshold, grainThreshold + 0.08, grainRandom);
-      float fineDust = hash21(grainGrid * 0.53 + 71.7) * density;
-      float sand = density * (0.2 + individualGrains * 0.92 + fineDust * 0.25);
+      float grainThreshold = 0.86 - density * (0.54 + uRelativeLevel * 0.1);
+      float individualGrains = smoothstep(grainThreshold, grainThreshold + 0.06, grainRandom);
+      float fineDust = hash21(grainGrid * 0.53 + 71.7) * density * 0.35;
+      float sand = density * (0.06 + individualGrains * 1.18 + fineDust * 0.12);
 
       vec3 lightDirection = normalize(vec3(-0.55, 0.65, 0.95));
       vec3 halfVector = normalize(lightDirection + vec3(0.0, 0.0, 1.0));
@@ -216,25 +253,23 @@ export function getChladniMaterial() {
       float edgeGlint = pow(1.0 - max(normal.z, 0.0), 2.4);
 
       vec3 voidColor = vec3(0.0015, 0.002, 0.006);
-      vec3 darkMetal = vec3(0.055, 0.07, 0.085);
+      vec3 darkMetal = vec3(0.025, 0.028, 0.032);
       vec3 silver = vec3(0.68, 0.76, 0.78);
       vec3 alienCyan = vec3(0.16, 0.92, 0.82);
       vec3 ultraviolet = vec3(0.34, 0.08, 0.7);
       vec3 color = voidColor;
-      color += darkMetal * density * (0.5 + diffuse * 0.8);
-      color += silver * sand * (0.2 + diffuse * 0.72);
-      color += alienCyan * specular * (0.28 + uSpectralHigh * 0.9);
-      color += ultraviolet * edgeGlint * density * (0.12 + uSpectralMid * 0.4);
-      color += alienCyan * individualGrains * uSpectralHigh * 0.3;
-      color += silver * fineDust * (1.0 - uTonality) * 0.16;
-      float dormantGlow = 0.08 + uPresence * 0.12 + uLevelSlow * 0.18;
+      color += darkMetal * density * (0.18 + diffuse * 0.36);
+      color += silver * sand * (0.38 + diffuse * 0.86);
+      color += alienCyan * specular * sand * (0.08 + uSpectralHigh * 0.38);
+      color += ultraviolet * edgeGlint * individualGrains * (0.035 + uSpectralMid * 0.12);
+      color += alienCyan * individualGrains * uSpectralHigh * 0.08;
+      color += silver * fineDust * (1.0 - uTonality) * 0.05;
+      float dormantGlow = 0.035 + uPresence * 0.07 + uLevelSlow * 0.11;
       color += mix(silver, alienCyan, uBlueprintPhase) * density * dormantGlow;
       color = hueShift(color, uHue + uJourney * 0.08);
 
       float vignette = smoothstep(1.25, 0.32, length(plateUv));
-      float outerGlow = exp(-abs(length(plateUv) - 0.83) * 12.0) * 0.04;
       color *= 0.64 + vignette * 0.48;
-      color += alienCyan * outerGlow * (0.18 + uPresence * 0.3 + uRelativeLevel * 0.35);
       gl_FragColor = vec4(color, uOpacity * luminousLayerCoverage(color, vUv));
     }
   `;

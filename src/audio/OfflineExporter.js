@@ -144,7 +144,7 @@ export class OfflineVideoExporter {
       const canvas = document.createElement('canvas');
       engine = new VisualizerEngine(canvas, { preserveDrawingBuffer: true });
       engine.setExportResolution(width, height, OFFLINE_EXPORT_PROFILE.frameRate);
-      engine.updateTracks(tracks, 'multi', 'ritualCurrent');
+      engine.updateTracks(tracks, 'multi', 'livingMandala');
 
       const analysers = new Map(
         tracks

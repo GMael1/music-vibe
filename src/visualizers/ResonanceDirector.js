@@ -46,16 +46,12 @@ function bracketFrequency(frequency) {
   return { a: PLATE_MODE_ATLAS[last - 1], b: PLATE_MODE_ATLAS[last], mix: 1 };
 }
 
-function nearestMode(frequency) {
-  const bracket = bracketFrequency(frequency);
-  return bracket.mix < 0.5 ? bracket.a : bracket.b;
-}
-
 export class ResonanceDirector {
   constructor(seed = 'resonance') {
     this.seed = hashString(seed);
     this.smoothedHz = 0;
     this.smoothedSecondaryHz = 0;
+    this.smoothedSecondaryWeight = 0;
   }
 
   update(features, delta = 1 / 60) {
@@ -70,31 +66,72 @@ export class ResonanceDirector {
 
     const frequencyRatio = Math.max(this.smoothedHz, this.smoothedSecondaryHz)
       / Math.max(1, Math.min(this.smoothedHz, this.smoothedSecondaryHz));
-    const secondaryStrength = features.peakStrength2 ?? 0;
-    const useSecondaryMode = frequencyRatio > 1.22 && secondaryStrength > 0.24;
-    const bracket = bracketFrequency(this.smoothedHz);
-    const modeA = bracket.a;
-    const modeB = useSecondaryMode ? nearestMode(this.smoothedSecondaryHz) : bracket.b;
-    const mix = useSecondaryMode
-      ? clamp01(secondaryStrength * (0.55 + (features.spread ?? 0) * 0.55))
-      : bracket.mix;
+    const separation = clamp01(Math.log2(Math.max(1, frequencyRatio)) / 1.35);
+    const secondaryTarget = (features.peakStrength2 ?? 0) * separation;
+    this.smoothedSecondaryWeight += (secondaryTarget - this.smoothedSecondaryWeight)
+      * (1 - Math.exp(-dt * 3.2));
+    const primaryBracket = bracketFrequency(this.smoothedHz);
+    const secondaryBracket = bracketFrequency(this.smoothedSecondaryHz);
+    const modeA = primaryBracket.a;
+    const modeB = primaryBracket.b;
+    const modeC = secondaryBracket.a;
+    const modeD = secondaryBracket.b;
+    const secondaryWeight = clamp01(this.smoothedSecondaryWeight * (0.72 + (features.spread ?? 0) * 0.28));
+    const primaryWeight = 1 - secondaryWeight;
+    const weights = [
+      primaryWeight * (1 - primaryBracket.mix),
+      primaryWeight * primaryBracket.mix,
+      secondaryWeight * (1 - secondaryBracket.mix),
+      secondaryWeight * secondaryBracket.mix,
+    ];
+    const weightTotal = Math.max(1e-6, weights.reduce((total, weight) => total + weight, 0));
+    const [weightA, weightB, weightC, weightD] = weights.map(weight => weight / weightTotal);
     const orientation = (this.seed - 0.5) * 0.28;
 
+    const describeMode = mode => ({
+      family: mode.family,
+      modeX: mode.modeX,
+      modeY: mode.modeY,
+      rotation: orientation + (mode.index % 3 - 1) * 0.035,
+      seed: (this.seed + mode.index * 0.173) % 1,
+      frequency: mode.frequency,
+    });
+    const a = describeMode(modeA);
+    const b = describeMode(modeB);
+    const c = describeMode(modeC);
+    const d = describeMode(modeD);
+
     return {
-      familyA: modeA.family,
-      familyB: modeB.family,
-      modeAX: modeA.modeX,
-      modeAY: modeA.modeY,
-      modeBX: modeB.modeX,
-      modeBY: modeB.modeY,
-      rotationA: orientation + (modeA.index % 3 - 1) * 0.035,
-      rotationB: orientation + (modeB.index % 3 - 1) * 0.035,
-      seedA: (this.seed + modeA.index * 0.173) % 1,
-      seedB: (this.seed + modeB.index * 0.173) % 1,
-      mix,
-      modeFrequencyA: modeA.frequency,
-      modeFrequencyB: modeB.frequency,
-      instability: useSecondaryMode ? 0.55 + secondaryStrength * 0.45 : 1 - Math.abs(mix * 2 - 1),
+      familyA: a.family,
+      familyB: b.family,
+      familyC: c.family,
+      familyD: d.family,
+      modeAX: a.modeX,
+      modeAY: a.modeY,
+      modeBX: b.modeX,
+      modeBY: b.modeY,
+      modeCX: c.modeX,
+      modeCY: c.modeY,
+      modeDX: d.modeX,
+      modeDY: d.modeY,
+      rotationA: a.rotation,
+      rotationB: b.rotation,
+      rotationC: c.rotation,
+      rotationD: d.rotation,
+      seedA: a.seed,
+      seedB: b.seed,
+      seedC: c.seed,
+      seedD: d.seed,
+      weightA,
+      weightB,
+      weightC,
+      weightD,
+      mix: primaryBracket.mix,
+      modeFrequencyA: a.frequency,
+      modeFrequencyB: b.frequency,
+      modeFrequencyC: c.frequency,
+      modeFrequencyD: d.frequency,
+      instability: clamp01(1 - Math.max(weightA, weightB, weightC, weightD)),
     };
   }
 }

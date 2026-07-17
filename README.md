@@ -6,11 +6,10 @@ AudioViz Studio is a local-first browser performance tool for creating modern, s
 
 - Up to six synchronized audio tracks, all starting at zero
 - Live microphone visualization without routing the mic to the speakers
-- Fluid Field, Resonance Plate, and shared Jungle Serpent visual systems
-- Multi-track serpent routing for body motion, skin, energy, lighting, atmosphere, and accents
+- Living Mandala, Fluid Field, and Resonance Plate visual systems
 - Per-track volume, Meditative–Ecstatic journey, Earthy–Cosmic world, scene role, opacity, position, and blend controls
 - Whole-track spectral profiling plus adaptive live musical analysis
-- Five smoothly crossfaded Resonance Plate families with phrase-aware visual direction
+- Deterministic frequency-mapped Resonance Plate modes with track-relative dB response
 - Smoothed multi-band analysis with pitch, timbre, beat, and onset detection
 - Quick real-time export plus deterministic high-quality WebCodecs export at 1920×1080 or 1080×1920 and 30 FPS
 - Local processing with no uploads or account required

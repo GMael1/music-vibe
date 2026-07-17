@@ -51,8 +51,9 @@ test('allows two strong separated peaks to coexist', () => {
     spread: 0.7,
   }), 1 / 60);
 
-  assert.notDeepEqual([result.familyA, result.modeAX, result.modeAY], [result.familyB, result.modeBX, result.modeBY]);
-  assert.ok(result.mix > 0.2 && result.mix < 0.8);
+  assert.notDeepEqual([result.familyA, result.modeAX, result.modeAY], [result.familyC, result.modeCX, result.modeCY]);
+  assert.ok(result.weightC + result.weightD > 0);
+  assert.ok(Math.abs(result.weightA + result.weightB + result.weightC + result.weightD - 1) < 1e-6);
 });
 
 test('keeps topology independent from dB intensity', () => {
@@ -62,7 +63,31 @@ test('keeps topology independent from dB intensity', () => {
   const loud = loudDirector.update(tone(440, { level: 1, relativeLevel: 1 }), 1 / 60);
 
   assert.deepEqual(
-    [quiet.familyA, quiet.modeAX, quiet.modeAY, quiet.familyB, quiet.modeBX, quiet.modeBY, quiet.mix],
-    [loud.familyA, loud.modeAX, loud.modeAY, loud.familyB, loud.modeBX, loud.modeBY, loud.mix],
+    [quiet.familyA, quiet.modeAX, quiet.modeAY, quiet.familyB, quiet.modeBX, quiet.modeBY,
+      quiet.weightA, quiet.weightB, quiet.weightC, quiet.weightD],
+    [loud.familyA, loud.modeAX, loud.modeAY, loud.familyB, loud.modeBX, loud.modeBY,
+      loud.weightA, loud.weightB, loud.weightC, loud.weightD],
   );
+});
+
+test('keeps modal energy continuous across resonance atlas boundaries', () => {
+  const below = new ResonanceDirector('continuous-boundary').update(tone(449.9), 1 / 60);
+  const above = new ResonanceDirector('continuous-boundary').update(tone(450.1), 1 / 60);
+  const toWeightMap = result => [
+    [result.modeFrequencyA, result.weightA],
+    [result.modeFrequencyB, result.weightB],
+    [result.modeFrequencyC, result.weightC],
+    [result.modeFrequencyD, result.weightD],
+  ].reduce((weights, [frequency, weight]) => {
+    weights.set(frequency, (weights.get(frequency) ?? 0) + weight);
+    return weights;
+  }, new Map());
+  const belowWeights = toWeightMap(below);
+  const aboveWeights = toWeightMap(above);
+  const frequencies = new Set([...belowWeights.keys(), ...aboveWeights.keys()]);
+  const difference = [...frequencies].reduce((total, frequency) => (
+    total + Math.abs((belowWeights.get(frequency) ?? 0) - (aboveWeights.get(frequency) ?? 0))
+  ), 0);
+
+  assert.ok(difference < 0.02);
 });
