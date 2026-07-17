@@ -14,11 +14,9 @@ const SIMULATION_FRAGMENT_SHADER = `
   uniform vec2 uResolution;
   uniform float uDelta;
   uniform float uReset;
-  uniform float uTime;
   uniform float uAspect;
   uniform float uRelativeLevel;
   uniform float uLevelFast;
-  uniform float uFlux;
   uniform float uFlow;
   uniform float uInstability;
   uniform float uDefinition;
@@ -35,12 +33,6 @@ const SIMULATION_FRAGMENT_SHADER = `
     float s = sin(angle);
     float c = cos(angle);
     return mat2(c, -s, s, c);
-  }
-
-  float hash21(vec2 p) {
-    p = fract(p * vec2(123.34, 345.45));
-    p += dot(p, p + 34.345);
-    return fract(p.x * p.y);
   }
 
   float rectangularField(vec2 p, float n, float m) {
@@ -115,8 +107,7 @@ const SIMULATION_FRAGMENT_SHADER = `
   void main() {
     vec2 texel = 1.0 / uResolution;
     if (uReset > 0.5) {
-      float initialGrain = hash21(floor(vUv * uResolution) + uBlueprintPhase * 997.0);
-      float initialDensity = targetDensity(vUv) * 0.68 + 0.021 + initialGrain * 0.003;
+      float initialDensity = targetDensity(vUv) * 0.72 + 0.012;
       gl_FragColor = vec4(initialDensity, 0.5, 0.5, 1.0);
       return;
     }
@@ -150,11 +141,8 @@ const SIMULATION_FRAGMENT_SHADER = `
     float target = targetDensity(vUv);
     float settleRate = 1.0 - exp(-uDelta * (0.14 + activity * 0.28) * liquidFlow);
     float density = mix(advected, target, settleRate);
-    float surfaceTension = 1.0 - exp(-uDelta * (0.32 + uInstability * 0.48));
+    float surfaceTension = 1.0 - exp(-uDelta * (0.55 + uInstability * 0.4));
     density = mix(density, neighborDensity, surfaceTension);
-
-    float liquidShimmer = hash21(floor(vUv * uResolution * 0.08) + floor(uTime * 1.5));
-    density += (liquidShimmer - 0.5) * uFlux * activity * 0.0012;
     gl_FragColor = vec4(clamp(density, 0.0, 1.0), velocity * 0.5 + 0.5, 1.0);
   }
 `;
@@ -185,11 +173,9 @@ export class SandSimulation {
       uResolution: { value: new THREE.Vector2(width, height) },
       uDelta: { value: 1 / 60 },
       uReset: { value: 1 },
-      uTime: { value: 0 },
       uAspect: { value: width / height },
       uRelativeLevel: { value: 0 },
       uLevelFast: { value: 0 },
-      uFlux: { value: 0 },
       uFlow: { value: 0.5 },
       uInstability: { value: 0 },
       uDefinition: { value: 7 },
@@ -231,18 +217,16 @@ export class SandSimulation {
     this.needsReset = true;
   }
 
-  update(renderer, resonance, features, delta, aspect, blueprintPhase = 0, time = 0, flow = 0.5) {
+  update(renderer, resonance, features, delta, aspect, blueprintPhase = 0, flow = 0.5) {
     this.accumulatedDelta += Math.max(0, delta);
     if (!this.needsReset && this.accumulatedDelta < 1 / 30) return this.readTarget.texture;
     const uniforms = this.uniforms;
     uniforms.uPreviousState.value = this.readTarget.texture;
     uniforms.uDelta.value = Math.max(1 / 240, Math.min(this.accumulatedDelta, 0.05));
     uniforms.uReset.value = this.needsReset ? 1 : 0;
-    uniforms.uTime.value = time;
     uniforms.uAspect.value = aspect;
     uniforms.uRelativeLevel.value = features.relativeLevel ?? features.level ?? 0;
     uniforms.uLevelFast.value = features.levelFast ?? features.level ?? 0;
-    uniforms.uFlux.value = features.flux ?? 0;
     uniforms.uFlow.value = flow;
     uniforms.uInstability.value = resonance.instability ?? 0;
     uniforms.uDefinition.value = 5.2 + (features.levelSlow ?? features.level ?? 0) * 2.2

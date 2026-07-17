@@ -33,6 +33,7 @@ export function getChladniMaterial() {
     uModeInstability: { value: 0 },
     uSandTexture: { value: null },
     uSandReady: { value: 0 },
+    uSandTexel: { value: new THREE.Vector2(1 / 560, 1 / 320) },
   };
   uniforms.uOpacity.value = 0.94;
 
@@ -94,6 +95,7 @@ export function getChladniMaterial() {
     uniform float uModeInstability;
     uniform sampler2D uSandTexture;
     uniform float uSandReady;
+    uniform vec2 uSandTexel;
     uniform float uPixelRatio;
     uniform float uBlueprintPhase;
     uniform float uDefinitionBias;
@@ -114,20 +116,6 @@ export function getChladniMaterial() {
       float s = sin(angle);
       float c = cos(angle);
       return mat2(c, -s, s, c);
-    }
-
-    float hash21(vec2 p) {
-      p = fract(p * vec2(123.34, 345.45));
-      p += dot(p, p + 34.345);
-      return fract(p.x * p.y);
-    }
-
-    float noise(vec2 p) {
-      vec2 i = floor(p);
-      vec2 f = fract(p);
-      f = f * f * (3.0 - 2.0 * f);
-      return mix(mix(hash21(i), hash21(i + vec2(1.0, 0.0)), f.x),
-                 mix(hash21(i + vec2(0.0, 1.0)), hash21(i + 1.0), f.x), f.y);
     }
 
     vec3 hueShift(vec3 color, float hue) {
@@ -186,12 +174,12 @@ export function getChladniMaterial() {
 
     vec2 fluidWarp(vec2 p) {
       float acousticMotion = mix(uLevelSlow, uLevelFast, 0.62) * uDynamicGain;
-      float flow = 0.0015 + uModeInstability * (0.003 + acousticMotion * 0.004)
-        + uFlux * 0.0025 * mix(0.2, 1.0, uEnergy);
+      float flow = 0.001 + uModeInstability * (0.002 + acousticMotion * 0.0025)
+        + uFlux * 0.0015 * mix(0.2, 1.0, uEnergy);
       vec2 curl = vec2(
-        noise(p * (2.0 + uSpectralMid * 0.35) + vec2(uTime * 0.09, 1.7)),
-        noise(p * (2.35 + uSpectralHigh * 0.4) - vec2(3.1, uTime * 0.075))
-      ) - 0.5;
+        sin(p.y * (2.1 + uSpectralMid * 0.4) + uTime * 0.075),
+        cos(p.x * (2.35 + uSpectralHigh * 0.4) - uTime * 0.06)
+      ) * 0.5;
       return p + curl * flow;
     }
 
@@ -223,43 +211,55 @@ export function getChladniMaterial() {
       vec2 warpedP = fluidWarp(p);
       float proceduralDensity = sandDensity(warpedP);
       vec4 persistentState = texture2D(uSandTexture, vUv);
-      float persistentDensity = persistentState.r;
+      float sandCenter = persistentState.r;
+      float sandLeft = texture2D(uSandTexture, vUv - vec2(uSandTexel.x, 0.0)).r;
+      float sandRight = texture2D(uSandTexture, vUv + vec2(uSandTexel.x, 0.0)).r;
+      float sandDown = texture2D(uSandTexture, vUv - vec2(0.0, uSandTexel.y)).r;
+      float sandUp = texture2D(uSandTexture, vUv + vec2(0.0, uSandTexel.y)).r;
+      float sandDownLeft = texture2D(uSandTexture, vUv - uSandTexel).r;
+      float sandUpRight = texture2D(uSandTexture, vUv + uSandTexel).r;
+      float sandUpLeft = texture2D(uSandTexture, vUv + vec2(-uSandTexel.x, uSandTexel.y)).r;
+      float sandDownRight = texture2D(uSandTexture, vUv + vec2(uSandTexel.x, -uSandTexel.y)).r;
+      float persistentDensity = (
+        sandCenter * 4.0
+        + (sandLeft + sandRight + sandDown + sandUp) * 2.0
+        + sandDownLeft + sandUpRight + sandUpLeft + sandDownRight
+      ) / 16.0;
       float density = mix(proceduralDensity, persistentDensity, uSandReady);
-      density = pow(clamp(density, 0.0, 1.0), mix(0.72, 0.5, uLight));
+      density = clamp(density, 0.0, 1.0);
       vec2 sandVelocity = (persistentState.gb - 0.5) * 2.0;
-      float grainMotion = clamp(length(sandVelocity) * 24.0, 0.0, 1.0) * uSandReady;
-      vec2 textureStep = vec2(1.0 / 720.0, 1.0 / 420.0);
-      float densityX = mix(
-        sandDensity(warpedP + vec2(0.0035, 0.0)),
-        texture2D(uSandTexture, vUv + vec2(textureStep.x, 0.0)).r,
-        uSandReady
+      float liquidMotion = clamp(length(sandVelocity) * 18.0, 0.0, 1.0) * uSandReady;
+      float proceduralLeft = sandDensity(warpedP - vec2(0.0035, 0.0));
+      float proceduralRight = sandDensity(warpedP + vec2(0.0035, 0.0));
+      float proceduralDown = sandDensity(warpedP - vec2(0.0, 0.0035));
+      float proceduralUp = sandDensity(warpedP + vec2(0.0, 0.0035));
+      vec2 persistentGradient = vec2(
+        (sandRight - sandLeft) * 0.5
+          + (sandUpRight + sandDownRight - sandUpLeft - sandDownLeft) * 0.125,
+        (sandUp - sandDown) * 0.5
+          + (sandUpRight + sandUpLeft - sandDownRight - sandDownLeft) * 0.125
       );
-      float densityY = mix(
-        sandDensity(warpedP + vec2(0.0, 0.0035)),
-        texture2D(uSandTexture, vUv + vec2(0.0, textureStep.y)).r,
-        uSandReady
+      vec2 proceduralGradient = vec2(
+        proceduralRight - proceduralLeft,
+        proceduralUp - proceduralDown
       );
-      vec3 normal = normalize(vec3((density - densityX) * 3.4, (density - densityY) * 3.4, 0.075));
-      vec2 gradient = normalize(vec2(density - densityX, density - densityY) + vec2(0.00001));
-      vec2 tangent = vec2(-gradient.y, gradient.x);
-      float body = smoothstep(0.008, 0.42, density);
-      float ridge = smoothstep(0.075, 0.58, density);
-      float liquidTexture = noise(
-        gl_FragCoord.xy / max(8.0, uPixelRatio * 13.0)
-          + tangent * 2.4 + sandVelocity * 28.0 + uTime * 0.025
-      );
-      float surface = body * (0.975 + liquidTexture * 0.025);
+      vec2 surfaceGradient = mix(proceduralGradient, persistentGradient, uSandReady);
+      vec3 normal = normalize(vec3(-surfaceGradient * 6.8, 0.12));
+      float body = smoothstep(0.045, 0.15, density);
+      float core = smoothstep(0.14, 0.46, density);
+      float rim = body * (1.0 - smoothstep(0.16, 0.38, density));
+      float deepPool = smoothstep(0.3, 0.72, density);
 
-      vec3 lightDirection = normalize(vec3(-0.55, 0.65, 0.95));
+      vec3 lightDirection = normalize(vec3(-0.6, 0.72, 0.88));
       vec3 halfVector = normalize(lightDirection + vec3(0.0, 0.0, 1.0));
       float diffuse = max(dot(normal, lightDirection), 0.0);
-      float specular = pow(max(dot(normal, halfVector), 0.0), mix(42.0, 92.0, uLight));
-      float edgeGlint = pow(1.0 - max(normal.z, 0.0), 2.2);
+      float specular = pow(max(dot(normal, halfVector), 0.0), mix(26.0, 68.0, uLight));
+      float edgeGlint = pow(1.0 - max(normal.z, 0.0), 1.65);
 
-      vec3 bronze = mix(vec3(0.085, 0.018, 0.004), vec3(1.35, 0.48, 0.075), diffuse);
-      vec3 mineral = mix(vec3(0.045, 0.07, 0.075), vec3(0.78, 1.08, 1.0), diffuse);
+      vec3 bronze = mix(vec3(0.035, 0.009, 0.002), vec3(1.28, 0.43, 0.055), diffuse);
+      vec3 mineral = mix(vec3(0.018, 0.027, 0.03), vec3(0.68, 0.94, 0.9), diffuse);
       vec3 cosmic = 0.48 + 0.52 * cos(6.2831853 * (
-        density * 0.72 + liquidTexture * 0.018 + uJourney * 0.025
+        density * 0.72 + uJourney * 0.025
           + vec3(0.02, 0.35, 0.68)
       ));
       float earthToMineral = smoothstep(0.22, 0.72, uCosmic);
@@ -268,23 +268,22 @@ export function getChladniMaterial() {
       sandColor = mix(sandColor, cosmic, mineralToCosmic);
       sandColor = hueShift(sandColor, uHue * 0.24);
 
-      float lightGain = mix(0.68, 2.05, uLight);
-      vec3 color = mix(vec3(0.001, 0.0015, 0.0025), sandColor * 0.035, body);
-      color += sandColor * surface * (0.34 + diffuse * 1.02) * lightGain;
+      float lightGain = mix(0.72, 2.2, uLight);
+      vec3 color = vec3(0.0);
+      color += sandColor * body * (0.22 + diffuse * 0.92) * lightGain;
+      color += sandColor * deepPool * (0.1 + diffuse * 0.3) * lightGain;
       color += mix(vec3(1.0, 0.7, 0.32), cosmic, mineralToCosmic)
-        * specular * ridge * (0.22 + uLight * 0.58);
+        * specular * core * (0.38 + uLight * 0.72);
       color += mix(vec3(0.32, 0.12, 0.02), cosmic, uCosmic)
-        * edgeGlint * ridge * (0.035 + uSpectralHigh * 0.09);
+        * edgeGlint * rim * (0.18 + uSpectralHigh * 0.18);
       color += mix(vec3(0.92, 0.32, 0.055), cosmic, uCosmic)
-        * grainMotion * surface * (0.05 + uRelativeLevel * 0.16);
-      float dormantGlow = 0.18 + uLight * 0.28 + uPresence * 0.05 + uLevelSlow * 0.08;
+        * liquidMotion * body * (0.035 + uRelativeLevel * 0.09);
+      float dormantGlow = 0.07 + uLight * 0.18 + uPresence * 0.04 + uLevelSlow * 0.06;
       color += sandColor * body * dormantGlow;
 
       float vignette = smoothstep(1.25, 0.32, length(plateUv));
       color *= 0.86 + vignette * 0.26;
-      float luminance = dot(max(color, vec3(0.0)), vec3(0.2126, 0.7152, 0.0722));
-      float readableAlpha = softLayerMask(vUv) * mix(0.68, 1.0, smoothstep(0.01, 0.22, luminance));
-      gl_FragColor = vec4(color, uOpacity * readableAlpha);
+      gl_FragColor = vec4(color, uOpacity * softLayerMask(vUv));
     }
   `;
 

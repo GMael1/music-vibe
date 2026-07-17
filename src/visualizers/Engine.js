@@ -10,6 +10,7 @@ import { getRitualCurrentMaterial } from './RitualCurrent.js';
 import { getLivingMandalaMaterial } from './LivingMandala.js';
 import { getObsidianOrganismMaterial } from './ObsidianOrganism.js';
 import { SandSimulation } from './SandSimulation.js';
+import { updateMandalaMotion } from './MandalaMotion.js';
 import {
   getJourneyDynamics,
   getLayerMaskConfig,
@@ -85,15 +86,31 @@ function visualSeed(value) {
 
 function sampleTrackJourney(profile, time) {
   const timeline = profile?.timeline;
-  if (!timeline?.length) return { intensity: 0.35, novelty: 0 };
+  if (!timeline?.length) {
+    return {
+      intensity: 0.35,
+      novelty: 0,
+      dominantHz: undefined,
+      centroidHz: undefined,
+      tonality: undefined,
+    };
+  }
   const duration = Math.max(0.001, profile.duration ?? timeline[timeline.length - 1].time ?? 1);
   const position = Math.max(0, Math.min(timeline.length - 1, (time / duration) * (timeline.length - 1)));
   const lower = Math.floor(position);
   const upper = Math.min(timeline.length - 1, lower + 1);
   const mix = position - lower;
+  const interpolate = (key, fallback) => {
+    const a = Number.isFinite(timeline[lower][key]) ? timeline[lower][key] : fallback;
+    const b = Number.isFinite(timeline[upper][key]) ? timeline[upper][key] : a;
+    return a + (b - a) * mix;
+  };
   return {
-    intensity: timeline[lower].intensity + (timeline[upper].intensity - timeline[lower].intensity) * mix,
-    novelty: timeline[lower].novelty + (timeline[upper].novelty - timeline[lower].novelty) * mix,
+    intensity: interpolate('intensity', 0.35),
+    novelty: interpolate('novelty', 0),
+    dominantHz: interpolate('dominantHz', 0),
+    centroidHz: interpolate('centroidHz', 0),
+    tonality: interpolate('tonality', 0.5),
   };
 }
 
@@ -448,6 +465,7 @@ export class VisualizerEngine {
       obj.visualTime = 0;
       obj.journey = 0;
       obj.journeyFeatures = null;
+      obj.mandalaMotion = null;
       obj.structurePeakHz1 = 0;
       obj.structurePeakHz2 = 0;
       obj.structurePeakStrength2 = 0;
@@ -488,6 +506,12 @@ export class VisualizerEngine {
         light: Number((obj.light ?? obj.targetLight ?? 0.62).toFixed(3)),
         bpm: obj.profile?.tempo?.bpm ?? undefined,
         visualTime: Number((obj.visualTime ?? 0).toFixed(3)),
+        mandalaPhase: obj.style === 'livingMandala'
+          ? Number((obj.mandalaMotion?.phase ?? 0).toFixed(3))
+          : undefined,
+        mandalaFrequencyShape: obj.style === 'livingMandala'
+          ? Number((obj.mandalaMotion?.frequencyShape ?? 0).toFixed(3))
+          : undefined,
         serpentTravel: obj.style === 'serpent'
           ? Number((obj.travelTime ?? 0).toFixed(3))
           : undefined,
@@ -587,6 +611,43 @@ export class VisualizerEngine {
         structureSpeed * 0.7,
       );
 
+      if (obj.style === 'livingMandala') {
+        const profileFrequency = obj.profile?.persistentPeaks?.[0]?.frequency
+          ?? obj.profile?.medianCentroidHz
+          ?? 220;
+        const analyzedStructureHz = trackJourney.centroidHz > 40
+          ? Math.sqrt(Math.max(55, profileFrequency) * trackJourney.centroidHz)
+          : obj.structurePeakHz1;
+        obj.mandalaMotion = updateMandalaMotion(
+          obj.mandalaMotion,
+          {
+            ...features,
+            peakHz1: analyzedStructureHz,
+            levelSlow: Math.max(features.levelSlow * 0.72, trackJourney.intensity * 0.56),
+            flux: features.flux * 0.58 + trackJourney.novelty * 0.24,
+            tonality: Number.isFinite(trackJourney.tonality)
+              ? features.tonality * 0.58 + trackJourney.tonality * 0.42
+              : features.tonality,
+          },
+          tempo,
+          dynamics,
+          obj.trance,
+          delta,
+          obj.blueprint,
+          profileFrequency,
+        );
+        if (uniforms.uMorphPhase) uniforms.uMorphPhase.value = obj.mandalaMotion.phase;
+        if (uniforms.uFrequencyShape) {
+          uniforms.uFrequencyShape.value = obj.mandalaMotion.frequencyShape;
+        }
+        if (uniforms.uFormBlend) uniforms.uFormBlend.value = obj.mandalaMotion.formBlend;
+        if (uniforms.uMotionEnergy) uniforms.uMotionEnergy.value = obj.mandalaMotion.velocity;
+        if (uniforms.uPulseEnvelope) {
+          uniforms.uPulseEnvelope.value = obj.mandalaMotion.pulseEnvelope;
+        }
+        if (uniforms.uSymmetryBase) uniforms.uSymmetryBase.value = obj.mandalaMotion.symmetry;
+      }
+
       const movementEnergy = features.level * 0.35
         + features.spectralLow * 0.2
         + features.spectralMid * 0.28
@@ -684,10 +745,10 @@ export class VisualizerEngine {
             delta,
             this.aspect,
             obj.blueprint?.palettePhase ?? 0,
-            obj.visualTime,
             obj.trance,
           );
           uniforms.uSandReady.value = 1;
+          uniforms.uSandTexel?.value.set(1 / obj.sand.width, 1 / obj.sand.height);
         }
       }
 
