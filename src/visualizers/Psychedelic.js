@@ -29,15 +29,29 @@ export function getPsychedelicMaterial() {
     uniform float uSpectralMid;
     uniform float uSpectralHigh;
     uniform float uLevel;
+    uniform float uRelativeLevel;
+    uniform float uLevelFast;
+    uniform float uLevelSlow;
+    uniform float uPresence;
     uniform float uBeat;
     uniform float uOnset;
     uniform float uFlux;
     uniform float uCentroid;
     uniform float uPitch;
+    uniform float uTonality;
+    uniform float uPeakHz1;
+    uniform float uPeakHz2;
+    uniform float uPeakStrength1;
+    uniform float uPeakStrength2;
     uniform float uSpread;
     uniform float uHue;
     uniform float uOpacity;
     uniform float uAspect;
+    uniform float uBlueprintPhase;
+    uniform float uDefinitionBias;
+    uniform float uDynamicGain;
+    uniform float uSectionIntensity;
+    uniform float uSectionNovelty;
     ${LAYER_MASK_UNIFORMS}
     varying vec2 vUv;
 
@@ -99,24 +113,24 @@ export function getPsychedelicMaterial() {
       vec2 centered = vUv * 2.0 - 1.0;
       centered.x *= uAspect;
       float radius = length(centered);
-      float bassLens = sin(radius * (7.0 + uSpectralLow * 9.0) - uTime * 1.8)
-        * uSpectralLow * 0.075 * mix(0.22, 1.0, uEnergy);
-      vec2 p = centered * (1.12 + bassLens);
-      p = rotate2d(uJourney * 0.55 + uLowMid * 0.18) * p;
+      float frequencyA = clamp(log(max(55.0, uPeakHz1) / 55.0) / log(5000.0 / 55.0), 0.0, 1.0);
+      float frequencyB = clamp(log(max(55.0, uPeakHz2) / 55.0) / log(5000.0 / 55.0), 0.0, 1.0);
+      vec2 p = centered * 1.12;
+      p = rotate2d((uBlueprintPhase - 0.5) * 0.42 + uJourney * 0.08) * p;
 
-      float topology = 2.0 + clamp(uPitch * 5.2 + uCentroid * 2.0 + uSpectralHigh * 1.2, 0.0, 8.0);
+      float topology = 3.0 + frequencyA * 9.0;
       float topologyBase = floor(topology);
       float topologyBlend = smoothstep(0.12, 0.88, fract(topology));
       vec2 foldedA = kaleidoscope(p, topologyBase);
       vec2 foldedB = kaleidoscope(p, topologyBase + 1.0);
       vec2 folded = mix(foldedA, foldedB, topologyBlend);
-      float structuralMix = clamp(uSpectralMid * 0.5 + uSpectralHigh * 0.28
-        + uSpread * 0.2 + uFlux * 0.25, 0.08, 0.9)
-        * mix(0.16, 1.0, uEnergy);
+      float structuralMix = clamp(0.22 + uTonality * 0.38 + uSpread * 0.24
+        + uPeakStrength2 * 0.18 + uSectionNovelty * 0.12, 0.12, 0.92);
       p = mix(p, folded, structuralMix);
 
-      float flowSpeed = 0.08 + uEnergy * 0.2
-        + (uLevel * 0.72 + uSpectralHigh * 0.52) * mix(0.12, 1.0, uEnergy);
+      float flowSpeed = 0.035 + uLevelSlow * 0.1
+        + (uRelativeLevel * 0.38 + uLevelFast * 0.18) * uDynamicGain
+        * mix(0.16, 1.0, uEnergy);
       vec2 q = vec2(
         fbm(p * (1.0 + uBass * 0.42) + vec2(uTime * flowSpeed, -uJourney * 3.0)),
         fbm(p + vec2(4.7, 2.1) - vec2(uJourney * 2.0, uTime * flowSpeed * 0.7))
@@ -126,14 +140,19 @@ export function getPsychedelicMaterial() {
         fbm(p + q * (1.25 + uMid * 1.5) + vec2(7.3, 2.8) - uTime * 0.31)
       );
 
-      float turbulence = 0.72 + uEnergy * 0.28
-        + (uFlux * 1.6 + uOnset * 0.75) * uEnergy;
+      float turbulence = 0.72 + uEnergy * 0.22
+        + (uFlux * 0.52 + uOnset * 0.12) * uEnergy;
       float fieldA = fbm(p + r * turbulence);
       float fieldB = fbm(rotate2d(1.57) * p - q * (0.8 + uTreble));
-      float field = mix(fieldA, fieldB, clamp(uCentroid * 0.5 + uPitch * 0.28, 0.0, 0.88));
-      float ridges = pow(1.0 - abs(sin((field + length(r) * 0.32) * (8.0 + uSpectralHigh * 14.0 + uSpread * 4.0))), 4.0);
-      float impact = exp(-abs(radius - (0.18 + uBeat * 0.55))
-        * (22.0 + uSpectralHigh * 14.0)) * uBeat * mix(0.12, 1.0, uEnergy);
+      float field = mix(fieldA, fieldB, clamp(frequencyA * 0.56 + frequencyB * 0.2, 0.0, 0.88));
+      float latticeA = sin(folded.x * (5.0 + frequencyA * 18.0))
+        * cos(folded.y * (6.0 + frequencyB * 16.0));
+      float latticeB = sin((folded.x + folded.y) * (4.0 + frequencyB * 13.0));
+      float spectralLattice = mix(latticeA, latticeB, uPeakStrength2);
+      field += spectralLattice * (0.045 + uTonality * 0.09);
+      float ridgeFrequency = 7.0 + frequencyA * 16.0 + frequencyB * 7.0;
+      float ridgePower = mix(2.4, 5.2, uDefinitionBias * 0.45 + uRelativeLevel * 0.55);
+      float ridges = pow(1.0 - abs(sin((field + length(r) * 0.32) * ridgeFrequency)), ridgePower);
       float granularDetail = noise(p * (8.0 + uSpectralHigh * 16.0) + uTime * 2.0) * uSpectralHigh;
 
       vec3 phase = vec3(
@@ -146,9 +165,10 @@ export function getPsychedelicMaterial() {
       color = mix(ink, color, smoothstep(0.1, 0.82, field));
       color += vec3(0.05, 0.95, 0.88) * ridges * (0.12 + uSpectralHigh * 0.65);
       color += vec3(1.0, 0.12, 0.38) * uSpectralLow * smoothstep(0.35, 0.9, r.x) * 0.46;
-      color += vec3(0.62, 0.35, 1.0) * impact * 0.55;
+      color += vec3(0.62, 0.35, 1.0) * max(0.0, spectralLattice) * uPeakStrength2 * 0.12;
       color += vec3(0.34, 0.82, 1.0) * granularDetail * 0.13;
-      color *= 0.62 + uLevel * 0.34 + smoothstep(1.35, 0.1, radius) * 0.42;
+      color *= 0.68 + uPresence * 0.1 + uRelativeLevel * 0.2 + uSectionIntensity * 0.08
+        + smoothstep(1.35, 0.1, radius) * 0.42;
       color = hueShift(color, uHue);
 
       float grain = (hash21(gl_FragCoord.xy + uTime * 31.0) - 0.5)

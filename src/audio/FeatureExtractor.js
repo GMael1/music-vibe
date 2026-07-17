@@ -18,7 +18,9 @@ export class FeatureExtractor {
   constructor(profile = null) {
     this.profile = profile;
     this.frequencyData = null;
+    this.frequencyDb = null;
     this.timeData = null;
+    this.timeFloat = null;
     this.previousSpectrum = null;
     this.bandPeaks = Object.fromEntries(Object.keys(BAND_RANGES).map((key) => [key, 0.12]));
     this.activeLowHz = profile?.lowHz ?? null;
@@ -34,10 +36,19 @@ export class FeatureExtractor {
       spectralMid: 0,
       spectralHigh: 0,
       level: 0,
+      levelDb: -120,
+      relativeLevel: 0,
+      levelFast: 0,
+      levelSlow: 0,
+      presence: 0,
       centroid: 0.5,
       pitch: 0.5,
       absolutePitch: 0.3,
       dominantHz: 0,
+      peakHz1: 0,
+      peakHz2: 0,
+      peakStrength1: 0,
+      peakStrength2: 0,
       spread: 0,
       tonality: 0.5,
       flux: 0,
@@ -51,9 +62,40 @@ export class FeatureExtractor {
   ensureBuffers(analyser) {
     const size = analyser.frequencyBinCount;
     if (!this.frequencyData || this.frequencyData.length !== size) {
-      this.frequencyData = new Uint8Array(size);
+      this.frequencyData = new Float32Array(size);
+      this.frequencyDb = new Float32Array(size);
       this.timeData = new Uint8Array(size);
+      this.timeFloat = new Float32Array(size);
       this.previousSpectrum = new Float32Array(size);
+    }
+  }
+
+  readAnalyser(analyser) {
+    if (typeof analyser.getFloatFrequencyData === 'function') {
+      analyser.getFloatFrequencyData(this.frequencyDb);
+      for (let i = 0; i < this.frequencyData.length; i += 1) {
+        const db = Number.isFinite(this.frequencyDb[i]) ? this.frequencyDb[i] : -120;
+        this.frequencyData[i] = clamp01((db + 100) / 80);
+      }
+    } else {
+      const bytes = new Uint8Array(this.frequencyData.length);
+      analyser.getByteFrequencyData(bytes);
+      const minimum = analyser.minDecibels ?? -100;
+      const maximum = analyser.maxDecibels ?? -30;
+      for (let i = 0; i < bytes.length; i += 1) {
+        const db = minimum + (bytes[i] / 255) * (maximum - minimum);
+        this.frequencyDb[i] = db;
+        this.frequencyData[i] = bytes[i] / 255;
+      }
+    }
+
+    if (typeof analyser.getFloatTimeDomainData === 'function') {
+      analyser.getFloatTimeDomainData(this.timeFloat);
+    } else {
+      analyser.getByteTimeDomainData(this.timeData);
+      for (let i = 0; i < this.timeData.length; i += 1) {
+        this.timeFloat[i] = (this.timeData[i] - 128) / 128;
+      }
     }
   }
 
@@ -63,7 +105,7 @@ export class FeatureExtractor {
     const end = Math.min(this.frequencyData.length - 1, Math.ceil(maxHz / binWidth));
     let total = 0;
 
-    for (let i = start; i <= end; i += 1) total += this.frequencyData[i] / 255;
+    for (let i = start; i <= end; i += 1) total += this.frequencyData[i];
     return total / Math.max(1, end - start + 1);
   }
 
@@ -84,8 +126,7 @@ export class FeatureExtractor {
 
   update(analyser, delta = 1 / 60, sensitivity = 1) {
     this.ensureBuffers(analyser);
-    analyser.getByteFrequencyData(this.frequencyData);
-    analyser.getByteTimeDomainData(this.timeData);
+    this.readAnalyser(analyser);
 
     const dt = Math.max(1 / 240, Math.min(delta, 0.1));
     const next = {};
@@ -98,12 +139,29 @@ export class FeatureExtractor {
     }
 
     let rmsTotal = 0;
-    for (let i = 0; i < this.timeData.length; i += 1) {
-      const sample = (this.timeData[i] - 128) / 128;
+    for (let i = 0; i < this.timeFloat.length; i += 1) {
+      const sample = this.timeFloat[i];
       rmsTotal += sample * sample;
     }
-    const rms = Math.sqrt(rmsTotal / this.timeData.length);
-    next.level = smooth(this.values.level, clamp01(rms * 4.5 * sensitivity), dt, 12, 3.5);
+    const rms = Math.sqrt(rmsTotal / this.timeFloat.length);
+    const levelDb = rms > 1e-6 ? Math.max(-120, 20 * Math.log10(rms)) : -120;
+    const quietDb = this.profile?.loudness?.quietDb ?? -60;
+    const loudDb = Math.max(quietDb + 8, this.profile?.loudness?.loudDb ?? -12);
+    const relativeLevel = clamp01((levelDb - quietDb) / (loudDb - quietDb));
+    const absoluteLevel = clamp01((levelDb + 72) / 60);
+    const calibratedLevel = this.profile ? relativeLevel : absoluteLevel;
+    next.levelDb = levelDb;
+    next.relativeLevel = smooth(this.values.relativeLevel, relativeLevel, dt, 16, 3.2);
+    next.levelFast = smooth(this.values.levelFast, calibratedLevel, dt, 22, 7);
+    next.levelSlow = smooth(this.values.levelSlow, calibratedLevel, dt, 2.2, 0.75);
+    next.level = smooth(this.values.level, clamp01(calibratedLevel * sensitivity), dt, 12, 3.5);
+    next.presence = smooth(
+      this.values.presence,
+      clamp01((levelDb - (this.profile?.loudness?.noiseFloorDb ?? -82) + 3) / 15),
+      dt,
+      9,
+      1.4,
+    );
 
     const binWidth = analyser.context.sampleRate / analyser.fftSize;
     const maxBin = Math.min(this.frequencyData.length - 1, Math.ceil(16000 / binWidth));
@@ -113,11 +171,11 @@ export class FeatureExtractor {
     let dominantBin = 1;
 
     for (let i = 1; i <= maxBin; i += 1) {
-      const magnitude = this.frequencyData[i] / 255;
+      const magnitude = this.frequencyData[i];
       magnitudeTotal += magnitude;
       weightedFrequency += i * binWidth * magnitude;
       positiveFlux += Math.max(0, magnitude - this.previousSpectrum[i]);
-      if (magnitude > this.frequencyData[dominantBin] / 255) dominantBin = i;
+      if (magnitude > this.frequencyData[dominantBin]) dominantBin = i;
       this.previousSpectrum[i] = magnitude;
     }
 
@@ -127,7 +185,7 @@ export class FeatureExtractor {
       let frameHighHz = maxBin * binWidth;
       let foundLow = false;
       for (let i = 1; i <= maxBin; i += 1) {
-        cumulative += (this.frequencyData[i] / 255) / magnitudeTotal;
+        cumulative += this.frequencyData[i] / magnitudeTotal;
         if (!foundLow && cumulative >= 0.05) {
           frameLowHz = i * binWidth;
           foundLow = true;
@@ -142,6 +200,19 @@ export class FeatureExtractor {
       const activeWidth = Math.max(120, this.activeHighHz - this.activeLowHz);
       const centroidHz = weightedFrequency / magnitudeTotal;
       const dominantHz = dominantBin * binWidth;
+      const peakCandidates = [];
+      for (let i = Math.max(2, Math.floor(35 / binWidth)); i < maxBin - 1; i += 1) {
+        const magnitude = this.frequencyData[i];
+        if (magnitude >= this.frequencyData[i - 1] && magnitude > this.frequencyData[i + 1]) {
+          peakCandidates.push({ bin: i, magnitude });
+        }
+      }
+      peakCandidates.sort((a, b) => b.magnitude - a.magnitude);
+      const primaryPeak = peakCandidates[0] ?? { bin: dominantBin, magnitude: this.frequencyData[dominantBin] };
+      const secondaryPeak = peakCandidates.find(candidate => (
+        Math.abs(candidate.bin - primaryPeak.bin) * binWidth > Math.max(70, primaryPeak.bin * binWidth * 0.16)
+      )) ?? primaryPeak;
+      const peakTotal = Math.max(1e-10, primaryPeak.magnitude + secondaryPeak.magnitude);
       const relativeCentroid = clamp01((centroidHz - this.activeLowHz) / activeWidth);
       const pitchLowHz = this.profile?.pitchLowHz ?? this.activeLowHz;
       const pitchHighHz = Math.max(pitchLowHz + 80, this.profile?.pitchHighHz ?? this.activeHighHz);
@@ -152,6 +223,10 @@ export class FeatureExtractor {
       next.pitch = smooth(this.values.pitch, relativePitch, dt, 4.5, 4.5);
       next.absolutePitch = smooth(this.values.absolutePitch, absolutePitch, dt, 5.5, 5.5);
       next.dominantHz = dominantHz;
+      next.peakHz1 = smooth(this.values.peakHz1 || primaryPeak.bin * binWidth, primaryPeak.bin * binWidth, dt, 8, 8);
+      next.peakHz2 = smooth(this.values.peakHz2 || secondaryPeak.bin * binWidth, secondaryPeak.bin * binWidth, dt, 6, 6);
+      next.peakStrength1 = smooth(this.values.peakStrength1, primaryPeak.magnitude / peakTotal, dt, 10, 4);
+      next.peakStrength2 = smooth(this.values.peakStrength2, secondaryPeak.magnitude / peakTotal, dt, 10, 4);
       next.spread = smooth(this.values.spread, relativeSpread, dt, 5, 3);
 
       const tonalityStart = Math.max(1, Math.floor(frameLowHz / binWidth));
@@ -160,7 +235,7 @@ export class FeatureExtractor {
       let arithmeticMagnitude = 0;
       let tonalityBins = 0;
       for (let i = tonalityStart; i <= tonalityEnd; i += 1) {
-        const magnitude = this.frequencyData[i] / 255 + 0.0001;
+        const magnitude = this.frequencyData[i] + 0.000001;
         logMagnitude += Math.log(magnitude);
         arithmeticMagnitude += magnitude;
         tonalityBins += 1;
@@ -189,6 +264,10 @@ export class FeatureExtractor {
       next.pitch = this.values.pitch;
       next.absolutePitch = this.values.absolutePitch;
       next.dominantHz = this.values.dominantHz;
+      next.peakHz1 = this.values.peakHz1;
+      next.peakHz2 = this.values.peakHz2;
+      next.peakStrength1 = smooth(this.values.peakStrength1, 0, dt, 8, 2);
+      next.peakStrength2 = smooth(this.values.peakStrength2, 0, dt, 8, 2);
       next.spread = smooth(this.values.spread, 0, dt, 5, 3);
       next.tonality = smooth(this.values.tonality, 0.5, dt, 4, 3);
       next.spectralLow = smooth(this.values.spectralLow, 0, dt, 10, 4);

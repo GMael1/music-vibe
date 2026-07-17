@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { profileAudioBuffer } from '../src/audio/TrackProfiler.js';
+import { fingerprintAudioBuffer, profileAudioBuffer } from '../src/audio/TrackProfiler.js';
+import { createVisualBlueprint } from '../src/audio/VisualBlueprint.js';
 
 function createSineBuffer(frequency, duration = 2, sampleRate = 48000) {
   const channel = new Float32Array(duration * sampleRate);
@@ -25,4 +26,19 @@ test('profiles the stable pitch range of an uploaded track', () => {
   assert.ok(profile.pitchLowHz > 400 && profile.pitchLowHz < 480);
   assert.ok(profile.pitchHighHz > 400 && profile.pitchHighHz < 480);
   assert.ok(profile.highHz > profile.lowHz);
+  assert.ok(profile.loudness.loudDb > profile.loudness.quietDb);
+  assert.ok(profile.timeline.length >= 48);
+  assert.ok(profile.persistentPeaks.length > 0);
+});
+
+test('generates a repeatable content fingerprint and visual blueprint', () => {
+  const buffer = createSineBuffer(330);
+  const profileA = profileAudioBuffer(buffer);
+  const profileB = profileAudioBuffer(buffer);
+  const blueprintA = createVisualBlueprint(profileA, 'chladni');
+  const blueprintB = createVisualBlueprint(profileB, 'chladni');
+
+  assert.equal(fingerprintAudioBuffer(buffer), profileA.fingerprint);
+  assert.equal(profileA.fingerprint, profileB.fingerprint);
+  assert.deepEqual(blueprintA, blueprintB);
 });

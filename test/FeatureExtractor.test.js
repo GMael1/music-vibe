@@ -88,3 +88,21 @@ test('maps dominant frequencies across each track active range', () => {
   assert.ok(higherAbsolutePitch > lowerAbsolutePitch);
   assert.ok(extractor.values.tonality > 0.4);
 });
+
+test('normalizes dB against an uploaded track quiet and loud range', () => {
+  const profile = {
+    lowHz: 80,
+    highHz: 4000,
+    pitchLowHz: 100,
+    pitchHighHz: 1200,
+    loudness: { noiseFloorDb: -80, quietDb: -48, loudDb: -12 },
+  };
+  const extractor = new FeatureExtractor(profile);
+  const analyser = createAnalyser({ bass: 0.8, amplitude: 0.12 });
+  let features;
+  for (let i = 0; i < 30; i += 1) features = extractor.update(analyser, 1 / 60, 1);
+
+  assert.ok(features.levelDb < -12 && features.levelDb > -48);
+  assert.ok(features.relativeLevel > 0 && features.relativeLevel < 1);
+  assert.ok(features.presence > 0.5);
+});

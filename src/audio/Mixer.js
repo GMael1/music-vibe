@@ -1,4 +1,5 @@
 import { profileAudioBuffer } from './TrackProfiler.js';
+import { createVisualBlueprint } from './VisualBlueprint.js';
 
 export class Mixer {
   constructor() {
@@ -44,9 +45,11 @@ export class Mixer {
     gainNode.connect(this.masterGain);
     analyserNode.connect(gainNode);
 
+    const profile = profileAudioBuffer(audioBuffer);
     this.tracks.set(id, {
       buffer: audioBuffer,
-      profile: profileAudioBuffer(audioBuffer),
+      profile,
+      blueprint: createVisualBlueprint(profile),
       gain: gainNode,
       analyser: analyserNode,
       source: null
@@ -183,6 +186,10 @@ export class Mixer {
 
   getTrackProfile(id) {
     return this.tracks.get(id)?.profile ?? null;
+  }
+
+  getTrackBlueprint(id) {
+    return this.tracks.get(id)?.blueprint ?? null;
   }
 
   // LIVE MODE

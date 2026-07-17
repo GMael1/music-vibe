@@ -43,7 +43,9 @@ function dampAudioValue(current, target, delta, attack, release) {
 const SMOOTHED_FEATURES = [
   'sub', 'bass', 'lowMid', 'mid', 'highMid', 'treble',
   'spectralLow', 'spectralMid', 'spectralHigh', 'level',
+  'relativeLevel', 'levelFast', 'levelSlow', 'presence',
   'centroid', 'pitch', 'absolutePitch', 'spread', 'tonality',
+  'peakHz1', 'peakHz2', 'peakStrength1', 'peakStrength2',
   'flux', 'beat', 'onset',
 ];
 
@@ -76,6 +78,20 @@ function visualSeed(value) {
     hash = Math.imul(hash, 16777619);
   }
   return (hash >>> 0) / 4294967295;
+}
+
+function sampleTrackJourney(profile, time) {
+  const timeline = profile?.timeline;
+  if (!timeline?.length) return { intensity: 0.35, novelty: 0 };
+  const duration = Math.max(0.001, profile.duration ?? timeline[timeline.length - 1].time ?? 1);
+  const position = Math.max(0, Math.min(timeline.length - 1, (time / duration) * (timeline.length - 1)));
+  const lower = Math.floor(position);
+  const upper = Math.min(timeline.length - 1, lower + 1);
+  const mix = position - lower;
+  return {
+    intensity: timeline[lower].intensity + (timeline[upper].intensity - timeline[lower].intensity) * mix,
+    novelty: timeline[lower].novelty + (timeline[upper].novelty - timeline[lower].novelty) * mix,
+  };
 }
 
 function getIdleFeatures(time) {
@@ -133,6 +149,9 @@ export class VisualizerEngine {
     this.manualTime = this.lastTime;
     this.serpentDemo = import.meta.env.DEV
       && new URLSearchParams(window.location.search).has('serpentDemo');
+    this.unsubscribeMixer = globalMixer.subscribe(event => {
+      if (event.type === 'play' && globalMixer.getCurrentTime() < 0.05) this.resetVisualState();
+    });
   }
 
   applySize(width, height, pixelRatio = 1) {
@@ -231,8 +250,11 @@ export class VisualizerEngine {
           ? this.createSerpentVisualizer()
           : this.createVisualizer(desired.style);
         if (desired.track) {
-          obj.extractor = new FeatureExtractor(globalMixer.getTrackProfile(desired.track.id));
-          obj.director = new ResonanceDirector(desired.track.name ?? desired.track.id);
+          const profile = globalMixer.getTrackProfile(desired.track.id);
+          obj.profile = profile;
+          obj.blueprint = globalMixer.getTrackBlueprint(desired.track.id);
+          obj.extractor = new FeatureExtractor(profile);
+          obj.director = new ResonanceDirector(obj.blueprint?.fingerprint ?? desired.track.name ?? desired.track.id);
         }
         obj.visualTime = 0;
         obj.journey = 0;
@@ -241,6 +263,7 @@ export class VisualizerEngine {
         obj.targetCosmic = desired.track?.cosmic ?? 0.2;
         obj.cosmic = obj.targetCosmic;
         obj.blendSeed = visualSeed(id);
+        if (obj.blueprint) obj.blendSeed = obj.blueprint.seed / 4294967295;
         this.scene.add(obj.mesh);
         this.objects.set(id, obj);
       }
@@ -279,6 +302,9 @@ export class VisualizerEngine {
       this.setPosition(obj.mesh, track.position);
       this.configureLayerMask(obj, track.position);
       if (obj.uniforms.uAspect) obj.uniforms.uAspect.value = this.aspect;
+      if (obj.uniforms.uBlueprintPhase) obj.uniforms.uBlueprintPhase.value = obj.blueprint?.palettePhase ?? 0;
+      if (obj.uniforms.uDefinitionBias) obj.uniforms.uDefinitionBias.value = obj.blueprint?.definitionBias ?? 0.65;
+      if (obj.uniforms.uDynamicGain) obj.uniforms.uDynamicGain.value = obj.blueprint?.dynamicGain ?? 0.7;
     }
   }
 
@@ -363,25 +389,37 @@ export class VisualizerEngine {
       obj.router?.dispose();
     }
     this.objects.clear();
+    this.unsubscribeMixer?.();
     this.renderer.dispose();
+  }
+
+  resetVisualState() {
+    for (const [id, obj] of this.objects.entries()) {
+      if (obj.style === 'serpent') continue;
+      obj.visualTime = 0;
+      obj.journey = 0;
+      obj.journeyFeatures = null;
+      obj.extractor = new FeatureExtractor(obj.profile);
+      obj.director = new ResonanceDirector(obj.blueprint?.fingerprint ?? id);
+    }
   }
 
   render() {
     const time = performance.now() / 1000;
     const delta = Math.min(time - this.lastTime, 0.1);
     this.lastTime = time;
-    this.renderFrame(time, delta, id => globalMixer.getTrackAnalyser(id));
+    this.renderFrame(time, delta, id => globalMixer.getTrackAnalyser(id), globalMixer.getCurrentTime());
   }
 
   renderOfflineFrame(time, delta, getAnalyser) {
-    this.renderFrame(time, delta, getAnalyser);
+    this.renderFrame(time, delta, getAnalyser, time);
   }
 
   advanceTime(milliseconds) {
     const steps = Math.max(1, Math.round(milliseconds / (1000 / 60)));
     for (let index = 0; index < steps; index += 1) {
       this.manualTime += 1 / 60;
-      this.renderFrame(this.manualTime, 1 / 60, id => globalMixer.getTrackAnalyser(id));
+      this.renderFrame(this.manualTime, 1 / 60, id => globalMixer.getTrackAnalyser(id), globalMixer.getCurrentTime());
     }
   }
 
@@ -405,7 +443,7 @@ export class VisualizerEngine {
     };
   }
 
-  renderFrame(time, delta, getAnalyser) {
+  renderFrame(time, delta, getAnalyser, timelineTime = 0) {
 
     for (const [id, obj] of this.objects.entries()) {
       if (obj.style === 'serpent') {
@@ -463,6 +501,7 @@ export class VisualizerEngine {
         : getIdleFeatures(time);
       const features = smoothJourneyFeatures(obj, rawFeatures, delta, dynamics);
       const uniforms = obj.uniforms;
+      const trackJourney = sampleTrackJourney(obj.profile, timelineTime);
 
       const movementEnergy = features.level * 0.35
         + features.spectralLow * 0.2
@@ -486,12 +525,21 @@ export class VisualizerEngine {
       if (uniforms.uSpectralMid) uniforms.uSpectralMid.value = features.spectralMid;
       if (uniforms.uSpectralHigh) uniforms.uSpectralHigh.value = features.spectralHigh;
       if (uniforms.uLevel) uniforms.uLevel.value = features.level;
+      if (uniforms.uRelativeLevel) uniforms.uRelativeLevel.value = features.relativeLevel ?? features.level;
+      if (uniforms.uLevelFast) uniforms.uLevelFast.value = features.levelFast ?? features.level;
+      if (uniforms.uLevelSlow) uniforms.uLevelSlow.value = features.levelSlow ?? features.level;
+      if (uniforms.uPresence) uniforms.uPresence.value = features.presence ?? features.level;
       if (uniforms.uBeat) uniforms.uBeat.value = features.beat;
       if (uniforms.uOnset) uniforms.uOnset.value = features.onset;
       if (uniforms.uFlux) uniforms.uFlux.value = features.flux;
       if (uniforms.uCentroid) uniforms.uCentroid.value = features.centroid;
       if (uniforms.uPitch) uniforms.uPitch.value = features.pitch;
       if (uniforms.uAbsolutePitch) uniforms.uAbsolutePitch.value = features.absolutePitch;
+      if (uniforms.uDominantHz) uniforms.uDominantHz.value = features.dominantHz ?? 110;
+      if (uniforms.uPeakHz1) uniforms.uPeakHz1.value = features.peakHz1 ?? features.dominantHz ?? 110;
+      if (uniforms.uPeakHz2) uniforms.uPeakHz2.value = features.peakHz2 ?? features.dominantHz ?? 220;
+      if (uniforms.uPeakStrength1) uniforms.uPeakStrength1.value = features.peakStrength1 ?? 0.5;
+      if (uniforms.uPeakStrength2) uniforms.uPeakStrength2.value = features.peakStrength2 ?? 0;
       if (uniforms.uSpread) uniforms.uSpread.value = features.spread;
       if (uniforms.uTonality) uniforms.uTonality.value = features.tonality;
       if (uniforms.uJourney) uniforms.uJourney.value = obj.journey;
@@ -501,6 +549,8 @@ export class VisualizerEngine {
       if (uniforms.uEnergy) uniforms.uEnergy.value = dynamics.energy;
       if (uniforms.uCosmic) uniforms.uCosmic.value = obj.cosmic;
       if (uniforms.uOpacity) uniforms.uOpacity.value = obj.opacity;
+      if (uniforms.uSectionIntensity) uniforms.uSectionIntensity.value = trackJourney.intensity;
+      if (uniforms.uSectionNovelty) uniforms.uSectionNovelty.value = trackJourney.novelty;
 
       if (obj.style === 'chladni') {
         const resonance = obj.director.update(features, delta, dynamics.energy);
@@ -515,6 +565,7 @@ export class VisualizerEngine {
         uniforms.uSeedA.value = resonance.seedA;
         uniforms.uSeedB.value = resonance.seedB;
         uniforms.uFamilyMix.value = resonance.mix;
+        if (uniforms.uModeInstability) uniforms.uModeInstability.value = resonance.instability;
       }
 
     }
