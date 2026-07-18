@@ -110,3 +110,73 @@ test('makes a sustained frequency change visibly reshape the kaleidoscope', () =
 
   assert.ok(state.frequencyShape - before > 0.15);
 });
+
+test('separates sound-driven shape deformation from rotation speed', () => {
+  let state = createMandalaMotionState(blueprint, 220);
+  for (let frame = 0; frame < 120; frame += 1) {
+    state = updateMandalaMotion(
+      state,
+      features({
+        relativeLevel: 0.04,
+        spectralMid: 0.08,
+        spectralHigh: 0.03,
+        spread: 0.05,
+        flux: 0,
+      }),
+      tempo,
+      dynamics,
+      0.15,
+      1 / 60,
+      blueprint,
+      220,
+    );
+  }
+  const quietShift = state.shapeShift;
+  const phaseBefore = state.phase;
+  for (let frame = 0; frame < 90; frame += 1) {
+    state = updateMandalaMotion(
+      state,
+      features({
+        relativeLevel: 1,
+        spectralMid: 0.85,
+        spectralHigh: 0.9,
+        spread: 0.8,
+        flux: 0.9,
+        onset: 1,
+      }),
+      tempo,
+      dynamics,
+      0.9,
+      1 / 60,
+      blueprint,
+      220,
+    );
+  }
+
+  assert.ok(state.shapeShift - quietShift > 0.45);
+  assert.ok(state.phase > phaseBefore);
+});
+
+test('makes Flow a strong shape-reactivity control', () => {
+  const loudFeatures = features({
+    relativeLevel: 0.78,
+    spectralMid: 0.74,
+    spectralHigh: 0.82,
+    spread: 0.76,
+    flux: 0.7,
+    onset: 0.6,
+  });
+  let still = createMandalaMotionState(blueprint, 220);
+  let intense = createMandalaMotionState(blueprint, 220);
+
+  for (let frame = 0; frame < 90; frame += 1) {
+    still = updateMandalaMotion(
+      still, loudFeatures, tempo, dynamics, 0, 1 / 60, blueprint, 220,
+    );
+    intense = updateMandalaMotion(
+      intense, loudFeatures, tempo, dynamics, 1, 1 / 60, blueprint, 220,
+    );
+  }
+
+  assert.ok(intense.shapeShift - still.shapeShift > 0.45);
+});

@@ -520,6 +520,9 @@ export class VisualizerEngine {
         mandalaFrequencyShape: obj.style === 'livingMandala'
           ? Number((obj.mandalaMotion?.frequencyShape ?? 0).toFixed(3))
           : undefined,
+        mandalaShapeShift: obj.style === 'livingMandala'
+          ? Number((obj.mandalaMotion?.shapeShift ?? 0).toFixed(3))
+          : undefined,
         plateFrequencyHz: obj.style === 'chladni'
           ? Number((obj.resonanceState?.sourceFrequency ?? 0).toFixed(1))
           : undefined,
@@ -673,6 +676,7 @@ export class VisualizerEngine {
         }
         if (uniforms.uFormBlend) uniforms.uFormBlend.value = obj.mandalaMotion.formBlend;
         if (uniforms.uMotionEnergy) uniforms.uMotionEnergy.value = obj.mandalaMotion.velocity;
+        if (uniforms.uShapeShift) uniforms.uShapeShift.value = obj.mandalaMotion.shapeShift;
         if (uniforms.uPulseEnvelope) {
           uniforms.uPulseEnvelope.value = obj.mandalaMotion.pulseEnvelope;
         }

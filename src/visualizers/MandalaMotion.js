@@ -18,6 +18,7 @@ export function createMandalaMotionState(blueprint, profileFrequency = 220) {
     velocity: 0.16,
     frequencyShape: normalizeMandalaFrequency(profileFrequency),
     formBlend: 0.42,
+    shapeShift: 0.25,
     pulseEnvelope: 0,
     symmetry: 5 + Math.round(symmetryBias * 3),
   };
@@ -57,6 +58,14 @@ export function updateMandalaMotion(
       + (features?.flux ?? 0) * 0.025
   ) * (0.72 + journeyFlow * 0.72));
   const pulseTarget = clamp01((features?.onset ?? 0) * 0.38 + (tempo?.pulse ?? 0) * 0.16);
+  const shapeShiftTarget = clamp01((
+    (features?.relativeLevel ?? features?.level ?? 0) * 0.28
+      + (features?.spectralMid ?? 0) * 0.16
+      + (features?.spectralHigh ?? 0) * 0.18
+      + (features?.spread ?? 0) * 0.12
+      + (features?.flux ?? 0) * 0.18
+      + (features?.onset ?? 0) * 0.08
+  ) * (0.34 + journeyFlow * 1.66));
 
   const frequencyShape = damp(
     state.frequencyShape,
@@ -77,12 +86,21 @@ export function updateMandalaMotion(
     dt,
     pulseTarget > state.pulseEnvelope ? 3.4 : 1.05,
   );
+  const shapeShift = damp(
+    state.shapeShift,
+    shapeShiftTarget,
+    dt,
+    shapeShiftTarget > state.shapeShift
+      ? 0.8 + journeyFlow * 3.2
+      : 0.3 + journeyFlow * 1.1,
+  );
 
   return {
     phase: state.phase + velocity * dt,
     velocity,
     frequencyShape,
     formBlend,
+    shapeShift,
     pulseEnvelope,
     symmetry: state.symmetry,
   };

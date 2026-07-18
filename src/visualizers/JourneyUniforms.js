@@ -26,6 +26,7 @@ export function createJourneyUniforms() {
     uFrequencyShape: { value: 0.35 },
     uFormBlend: { value: 0.42 },
     uMotionEnergy: { value: 0.16 },
+    uShapeShift: { value: 0.25 },
     uPulseEnvelope: { value: 0 },
     uSymmetryBase: { value: 6 },
     uOnset: { value: 0 },
