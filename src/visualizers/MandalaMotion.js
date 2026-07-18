@@ -84,7 +84,7 @@ export function updateMandalaMotion(
       + spectralMid * 0.07
       + spectralHigh * 0.06
       + musicDriveTarget * 0.36
-  ) * (0.78 + journeyFlow * 0.82));
+  ) * (0.28 + journeyFlow * 1.32));
   const pulseTarget = clamp01(
     (features?.onset ?? 0) * 0.62
       + (tempo?.pulse ?? 0) * 0.34
@@ -144,7 +144,9 @@ export function updateMandalaMotion(
   return {
     phase: state.phase + velocity * dt,
     shapePhase: state.shapePhase + tempoSpeed * dt * (
-      0.22 + musicDrive * (0.95 + journeyFlow * 1.35) + frequencyMotion * 0.72
+      0.08
+        + musicDrive * (0.14 + journeyFlow * 2.3)
+        + frequencyMotion * (0.08 + journeyFlow * 0.8)
     ),
     velocity,
     frequencyShape,

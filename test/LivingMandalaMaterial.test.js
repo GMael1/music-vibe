@@ -20,6 +20,8 @@ test('builds the mandala from anchored kaleidoscopic shape fields', () => {
   assert.match(shader, /uShapePhase/);
   assert.match(shader, /uMusicDrive/);
   assert.match(shader, /uFrequencyMotion/);
+  assert.match(shader, /flowResponse/);
+  assert.match(shader, /reactiveDrive/);
   assert.match(shader, /crystalDistance/);
   assert.match(shader, /rosetteDistance/);
   assert.match(shader, /prismaticVeil/);

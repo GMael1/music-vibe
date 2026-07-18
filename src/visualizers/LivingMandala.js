@@ -141,9 +141,13 @@ export function getLivingMandalaMaterial() {
         float shapeShift = clamp(uShapeShift, 0.0, 1.0);
         float musicDrive = clamp(uMusicDrive, 0.0, 1.0);
         float frequencyMotion = clamp(uFrequencyMotion, 0.0, 1.0);
+        float flowResponse = smoothstep(0.0, 1.0, clamp(uTrance, 0.0, 1.0));
+        float reactiveDrive = musicDrive * (0.12 + flowResponse * 0.88);
+        float reactiveFrequencyMotion = frequencyMotion * (0.15 + flowResponse * 0.85);
         float shapeClock = uShapePhase;
         float reactivity = clamp(
-          0.16 + shapeShift * 0.62 + musicDrive * 0.72 + frequencyMotion * 0.42,
+          0.16 + shapeShift * 0.62 + reactiveDrive * 0.72
+            + reactiveFrequencyMotion * 0.42,
           0.0,
           1.35
         );
@@ -160,18 +164,22 @@ export function getLivingMandalaMaterial() {
         ) - 0.5;
         q += organic * (
           0.018 + uMotionEnergy * 0.024 + uFlux * 0.032
-            + shapeShift * 0.034 + musicDrive * 0.07 + frequencyMotion * 0.055
+            + shapeShift * 0.034 + reactiveDrive * 0.07
+            + reactiveFrequencyMotion * 0.055
         );
 
         float levelContrast = max(0.0, uLevelFast - uLevelSlow);
         float breath = 1.0 + sin(TAU * uBeatPhase) * uPulseEnvelope * 0.035
           + levelContrast * 0.045 + uLevelSlow * 0.018;
         q *= breath;
-        float drift = shapeClock * (0.62 + uMotionEnergy * 0.32 + musicDrive * 0.48);
+        float drift = shapeClock * (
+          0.48 + uMotionEnergy * 0.24 + reactiveDrive * 0.42
+        );
         float tunnelPeriod = 1.78 - frequencyShape * 0.16 - shapeShift * 0.07;
         float tunnelHalf = tunnelPeriod * 0.5;
         float tunnelTravel = drift * (
-          0.052 + uSpectralMid * 0.026 + musicDrive * 0.038
+          0.01 + flowResponse * 0.035 + uSpectralMid * 0.012
+            + reactiveDrive * 0.02
         );
         float tunnelCoordinate = max(0.0, q.x + tunnelTravel);
         float tunnelPhase = tunnelCoordinate / tunnelPeriod;
@@ -183,7 +191,7 @@ export function getLivingMandalaMaterial() {
           q.y / (1.0 + tunnelCoordinate * 0.34)
         );
         tunnelQ.y += sin(tunnelCoordinate * 2.17 + drift * 0.72)
-          * (0.018 + musicDrive * 0.022);
+          * (0.014 + reactiveDrive * 0.022);
         float shapeMix = smoothstep(0.18, 0.82, formBlend);
         float petalMix = smoothstep(0.38, 0.92, uSpectralHigh * 0.68 + uSpread * 0.32);
         float reactiveTravel = 0.74 + reactivity * 1.92;
@@ -215,7 +223,7 @@ export function getLivingMandalaMaterial() {
           innerSize * (0.94 + shapeShift * 0.12),
           4.0 + frequencyShape * 4.0,
           7.0 + uSpectralLow * 5.0,
-          shapeClock * (0.72 + musicDrive * 0.68)
+          shapeClock * (0.62 + reactiveDrive * 0.62)
         );
         float dInner = mix(dInnerBase, dInnerRosette, clamp(
           shapeShift * 0.74 + uSpectralLow * 0.22,
@@ -235,7 +243,7 @@ export function getLivingMandalaMaterial() {
           middleSize,
           4.0 + frequencyShape * 5.0,
           0.18 + shapeShift * 0.2,
-          -shapeClock * (0.58 + musicDrive * 0.52)
+          -shapeClock * (0.5 + reactiveDrive * 0.48)
         );
         float dMiddle = mix(dMiddleBase, dMiddleCrystal, clamp(
           shapeShift * 0.68 + uSpectralMid * 0.3,
@@ -254,7 +262,7 @@ export function getLivingMandalaMaterial() {
           outerSize,
           5.0 + frequencyShape * 4.0,
           11.0 + shapeShift * 8.0,
-          shapeClock * (0.83 + musicDrive * 0.76)
+          shapeClock * (0.68 + reactiveDrive * 0.7)
         );
         float dOuter = mix(dOuterLens, dOuterRosette, clamp(
           shapeShift * 0.62 + uSpectralHigh * 0.35,
@@ -262,18 +270,21 @@ export function getLivingMandalaMaterial() {
           0.9
         ));
         float ringA = abs(tunnelRadius - (
-          0.36 + frequencyShape * 0.08 + sin(drift * 0.52) * (0.018 + musicDrive * 0.025)
+          0.36 + frequencyShape * 0.08
+            + sin(drift * 0.52) * (0.018 + reactiveDrive * 0.025)
         ));
         float ringB = abs(tunnelRadius - (
-          0.7 + frequencyShape * 0.12 + cos(drift * 0.39) * (0.025 + frequencyMotion * 0.04)
+          0.7 + frequencyShape * 0.12
+            + cos(drift * 0.39) * (0.025 + reactiveFrequencyMotion * 0.04)
         ));
         float spoke = abs(tunnelQ.y - (0.017 + uSpectralMid * 0.018) * sin(
-          tunnelQ.x * (9.0 + frequencyShape * 5.0) - drift * (0.92 + musicDrive * 0.7)
+          tunnelQ.x * (9.0 + frequencyShape * 5.0)
+            - drift * (0.78 + reactiveDrive * 0.62)
         ));
         float motifDistanceField = min(min(dInner, dMiddle), dOuter);
         float latticeDistance = min(min(ringA, ringB), spoke);
         float lineWidth = 0.0075 + uLevelSlow * 0.006 + uLight * 0.0025
-          + shapeShift * 0.0018 + musicDrive * 0.0024;
+          + shapeShift * 0.0018 + reactiveDrive * 0.0024;
         float aa = max(fwidth(motifDistanceField), 0.0012);
         float motifLine = 1.0 - smoothstep(lineWidth, lineWidth + aa * 1.8, motifDistanceField);
         float latticeLine = 1.0 - smoothstep(
@@ -298,7 +309,7 @@ export function getLivingMandalaMaterial() {
           - uSpectralLow * 0.08;
         float psychedelicPhase = tunnelPhase * 0.42 + tunnelQ.y * 0.34
           + motifAngle * (0.28 + shapeShift * 0.3)
-          + organic.x * 0.28 + drift * (0.065 + musicDrive * 0.05)
+          + organic.x * 0.28 + drift * (0.045 + reactiveDrive * 0.045)
           + shapeShift * 0.16 + spectralHue;
         vec3 cosmic = spectralPalette(psychedelicPhase + formBlend * 0.18);
         vec3 fringe = spectralPalette(
@@ -324,25 +335,25 @@ export function getLivingMandalaMaterial() {
         float prismaticVeil = exp(-motifDistanceField * (8.5 + shapeShift * 2.5));
         float prismaticFill = 0.5 + 0.5 * cos(
           motifDistanceField * (19.0 + frequencyShape * 9.0)
-            - tunnelPhase * TAU + drift * (0.34 + musicDrive * 0.24)
+            - tunnelPhase * TAU + drift * (0.26 + reactiveDrive * 0.22)
         );
         color += mix(glow, fringe, 0.64) * prismaticVeil * prismaticFill
           * (0.018 + cosmicAmount * 0.038 + shapeShift * 0.04);
         float cellA = fbm(
           tunnelQ * (3.1 + frequencyShape * 1.7)
             + organic * (1.1 + shapeShift * 0.7)
-            + vec2(drift * (0.16 + musicDrive * 0.22), 2.8)
+            + vec2(drift * (0.12 + reactiveDrive * 0.2), 2.8)
         );
         float cellB = fbm(
           rotate2d(1.19) * tunnelQ * (3.55 + formBlend * 1.45)
             - organic * (0.9 + shapeShift * 0.8)
-            - vec2(4.1, drift * (0.13 + musicDrive * 0.18))
+            - vec2(4.1, drift * (0.1 + reactiveDrive * 0.17))
         );
         float reactionCell = abs(cellA - cellB);
         float kaleidoscopeMembrane = pow(1.0 - abs(sin(
           (reactionCell + motifDistanceField * 0.3 + tunnelPhase * 0.08)
             * (10.0 + uSpectralMid * 7.0 + shapeShift * 5.0
-              + frequencyMotion * 6.0)
+              + reactiveFrequencyMotion * 6.0)
         )), 4.0);
         vec3 membraneColor = spectralPalette(
           psychedelicPhase + cellA * 0.32 - cellB * 0.19 + shapeShift * 0.12
@@ -354,7 +365,7 @@ export function getLivingMandalaMaterial() {
         float psychedelicContour = 0.5 + 0.5 * cos(
           motifDistanceField * (48.0 + shapeShift * 28.0)
             - tunnelPhase * TAU * 1.7 + organic.y * 3.2
-            - drift * (0.52 + musicDrive * 0.34)
+            - drift * (0.42 + reactiveDrive * 0.3)
         );
         color += fringe * psychedelicContour * motifAura
           * (0.025 + shapeShift * 0.085 + uFlux * 0.04 + musicDrive * 0.075);

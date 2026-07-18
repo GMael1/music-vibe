@@ -179,6 +179,9 @@ test('makes Flow a strong shape-reactivity control', () => {
   }
 
   assert.ok(intense.shapeShift - still.shapeShift > 0.45);
+  assert.ok(still.shapePhase < 0.5);
+  assert.ok(intense.shapePhase > still.shapePhase * 8);
+  assert.ok(intense.phase > still.phase * 3);
 });
 
 test('turns a musical phrase into fast internal morphing without a topology jump', () => {
