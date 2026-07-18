@@ -12,6 +12,10 @@ test('builds the mandala from anchored kaleidoscopic shape fields', () => {
   assert.match(shader, /anchorInner/);
   assert.match(shader, /anchorMiddle/);
   assert.match(shader, /anchorOuter/);
+  assert.match(shader, /tunnelRadius/);
+  assert.match(shader, /tunnelPhase/);
+  assert.doesNotMatch(shader, /shellIndex/);
+  assert.match(shader, /edgeImmersion/);
   assert.doesNotMatch(shader, /gl_FragCoord/);
 
   geometry.dispose();
