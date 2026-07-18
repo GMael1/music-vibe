@@ -523,6 +523,15 @@ export class VisualizerEngine {
         mandalaShapeShift: obj.style === 'livingMandala'
           ? Number((obj.mandalaMotion?.shapeShift ?? 0).toFixed(3))
           : undefined,
+        mandalaMusicDrive: obj.style === 'livingMandala'
+          ? Number((obj.mandalaMotion?.musicDrive ?? 0).toFixed(3))
+          : undefined,
+        mandalaFrequencyMotion: obj.style === 'livingMandala'
+          ? Number((obj.mandalaMotion?.frequencyMotion ?? 0).toFixed(3))
+          : undefined,
+        mandalaShapePhase: obj.style === 'livingMandala'
+          ? Number((obj.mandalaMotion?.shapePhase ?? 0).toFixed(3))
+          : undefined,
         plateFrequencyHz: obj.style === 'chladni'
           ? Number((obj.resonanceState?.sourceFrequency ?? 0).toFixed(1))
           : undefined,
@@ -657,8 +666,10 @@ export class VisualizerEngine {
           {
             ...features,
             peakHz1: analyzedStructureHz,
+            spectralLow: Math.max(features.spectralLow * 0.78, features.bass * 0.55),
             levelSlow: Math.max(features.levelSlow * 0.72, trackJourney.intensity * 0.56),
             flux: features.flux * 0.58 + trackJourney.novelty * 0.24,
+            sectionNovelty: trackJourney.novelty,
             tonality: Number.isFinite(trackJourney.tonality)
               ? features.tonality * 0.58 + trackJourney.tonality * 0.42
               : features.tonality,
@@ -677,6 +688,11 @@ export class VisualizerEngine {
         if (uniforms.uFormBlend) uniforms.uFormBlend.value = obj.mandalaMotion.formBlend;
         if (uniforms.uMotionEnergy) uniforms.uMotionEnergy.value = obj.mandalaMotion.velocity;
         if (uniforms.uShapeShift) uniforms.uShapeShift.value = obj.mandalaMotion.shapeShift;
+        if (uniforms.uShapePhase) uniforms.uShapePhase.value = obj.mandalaMotion.shapePhase;
+        if (uniforms.uMusicDrive) uniforms.uMusicDrive.value = obj.mandalaMotion.musicDrive;
+        if (uniforms.uFrequencyMotion) {
+          uniforms.uFrequencyMotion.value = obj.mandalaMotion.frequencyMotion;
+        }
         if (uniforms.uPulseEnvelope) {
           uniforms.uPulseEnvelope.value = obj.mandalaMotion.pulseEnvelope;
         }

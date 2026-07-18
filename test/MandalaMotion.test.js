@@ -61,7 +61,7 @@ test('turns a sudden harmonic jump into a slow continuous deformation', () => {
   );
 
   assert.ok(state.frequencyShape > before);
-  assert.ok(state.frequencyShape - before < 0.01);
+  assert.ok(state.frequencyShape - before < 0.025);
 });
 
 test('maintains continuous motion through stable sustained audio', () => {
@@ -86,7 +86,7 @@ test('maintains continuous motion through stable sustained audio', () => {
   }
 
   assert.ok(state.phase > 0.8);
-  assert.ok(largestVelocityStep < 0.01);
+  assert.ok(largestVelocityStep < 0.012);
 });
 
 test('makes a sustained frequency change visibly reshape the kaleidoscope', () => {
@@ -179,4 +179,36 @@ test('makes Flow a strong shape-reactivity control', () => {
   }
 
   assert.ok(intense.shapeShift - still.shapeShift > 0.45);
+});
+
+test('turns a musical phrase into fast internal morphing without a topology jump', () => {
+  let state = createMandalaMotionState(blueprint, 220);
+  for (let frame = 0; frame < 90; frame += 1) {
+    state = updateMandalaMotion(
+      state,
+      features({
+        peakHz1: 960,
+        relativeLevel: 0.86,
+        levelFast: 0.94,
+        levelSlow: 0.52,
+        spectralLow: 0.2,
+        spectralMid: 0.78,
+        spectralHigh: 0.9,
+        flux: 0.7,
+        onset: frame % 30 === 0 ? 1 : 0,
+        sectionNovelty: 0.72,
+      }),
+      { speed: 1.08, pulse: frame % 30 < 4 ? 0.9 : 0.05 },
+      dynamics,
+      0.75,
+      1 / 60,
+      blueprint,
+      220,
+    );
+  }
+
+  assert.ok(state.musicDrive > 0.65);
+  assert.ok(state.frequencyMotion > 0.45);
+  assert.ok(state.shapePhase > state.phase * 1.4);
+  assert.equal(state.symmetry, createMandalaMotionState(blueprint, 220).symmetry);
 });

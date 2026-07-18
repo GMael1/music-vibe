@@ -19,6 +19,9 @@ export function createMandalaMotionState(blueprint, profileFrequency = 220) {
     frequencyShape: normalizeMandalaFrequency(profileFrequency),
     formBlend: 0.42,
     shapeShift: 0.25,
+    shapePhase: 0,
+    musicDrive: 0.18,
+    frequencyMotion: 0,
     pulseEnvelope: 0,
     symmetry: 5 + Math.round(symmetryBias * 3),
   };
@@ -42,6 +45,31 @@ export function updateMandalaMotion(
     ? features.peakHz1
     : profileFrequency;
   const frequencyTarget = normalizeMandalaFrequency(liveFrequency);
+  const frequencyDistance = Math.abs(frequencyTarget - state.frequencyShape);
+  const relativeLevel = clamp01(features?.relativeLevel ?? features?.level ?? 0);
+  const levelFast = clamp01(features?.levelFast ?? relativeLevel);
+  const levelSlow = clamp01(features?.levelSlow ?? relativeLevel);
+  const levelContrast = Math.max(0, levelFast - levelSlow);
+  const spectralLow = clamp01(features?.spectralLow ?? 0);
+  const spectralMid = clamp01(features?.spectralMid ?? 0);
+  const spectralHigh = clamp01(features?.spectralHigh ?? 0);
+  const spectralContrast = Math.abs(spectralLow - spectralMid) * 0.55
+    + Math.abs(spectralMid - spectralHigh) * 0.45;
+  const frequencyMotionTarget = clamp01(
+    frequencyDistance * 2.4
+      + (features?.flux ?? 0) * 1.15
+      + (features?.sectionNovelty ?? 0) * 0.7,
+  );
+  const musicDriveTarget = clamp01(
+    0.08
+      + relativeLevel * 0.2
+      + levelContrast * 1.45
+      + (features?.flux ?? 0) * 0.9
+      + (features?.onset ?? 0) * 0.72
+      + (tempo?.pulse ?? 0) * 0.34
+      + frequencyMotionTarget * 0.36
+      + spectralContrast * 0.18,
+  );
   const formTarget = clamp01(
     (features?.spectralMid ?? 0) * 0.38
       + (features?.spectralHigh ?? 0) * 0.26
@@ -50,30 +78,48 @@ export function updateMandalaMotion(
   );
   const tempoSpeed = Number.isFinite(tempo?.speed) ? tempo.speed : 1;
   const velocityTarget = Math.max(0.075, tempoSpeed * (
-    0.105
-      + (features?.levelSlow ?? features?.level ?? 0) * 0.16
-      + (features?.relativeLevel ?? features?.level ?? 0) * 0.09
-      + (features?.spectralMid ?? 0) * 0.055
-      + (features?.spectralHigh ?? 0) * 0.045
-      + (features?.flux ?? 0) * 0.025
-  ) * (0.72 + journeyFlow * 0.72));
-  const pulseTarget = clamp01((features?.onset ?? 0) * 0.38 + (tempo?.pulse ?? 0) * 0.16);
+    0.24
+      + levelSlow * 0.14
+      + relativeLevel * 0.1
+      + spectralMid * 0.07
+      + spectralHigh * 0.06
+      + musicDriveTarget * 0.36
+  ) * (0.78 + journeyFlow * 0.82));
+  const pulseTarget = clamp01(
+    (features?.onset ?? 0) * 0.62
+      + (tempo?.pulse ?? 0) * 0.34
+      + levelContrast * 0.82,
+  );
   const shapeShiftTarget = clamp01((
-    (features?.relativeLevel ?? features?.level ?? 0) * 0.28
-      + (features?.spectralMid ?? 0) * 0.16
-      + (features?.spectralHigh ?? 0) * 0.18
+    relativeLevel * 0.22
+      + spectralMid * 0.13
+      + spectralHigh * 0.14
       + (features?.spread ?? 0) * 0.12
-      + (features?.flux ?? 0) * 0.18
-      + (features?.onset ?? 0) * 0.08
+      + musicDriveTarget * 0.31
+      + frequencyMotionTarget * 0.2
   ) * (0.34 + journeyFlow * 1.66));
 
   const frequencyShape = damp(
     state.frequencyShape,
     frequencyTarget,
     dt,
-    0.72 + journeyFlow * 0.86,
+    1.2 + journeyFlow * 2.3,
   );
-  const formBlend = damp(state.formBlend, formTarget, dt, 0.68 + energy * 0.9);
+  const formBlend = damp(state.formBlend, formTarget, dt, 1.25 + energy * 1.8);
+  const frequencyMotion = damp(
+    state.frequencyMotion,
+    frequencyMotionTarget,
+    dt,
+    frequencyMotionTarget > state.frequencyMotion ? 7.5 : 1.8,
+  );
+  const musicDrive = damp(
+    state.musicDrive,
+    musicDriveTarget,
+    dt,
+    musicDriveTarget > state.musicDrive
+      ? 6.5 + journeyFlow * 5.5
+      : 1.15 + journeyFlow * 2.1,
+  );
   const velocity = damp(
     state.velocity,
     velocityTarget,
@@ -97,10 +143,15 @@ export function updateMandalaMotion(
 
   return {
     phase: state.phase + velocity * dt,
+    shapePhase: state.shapePhase + tempoSpeed * dt * (
+      0.22 + musicDrive * (0.95 + journeyFlow * 1.35) + frequencyMotion * 0.72
+    ),
     velocity,
     frequencyShape,
     formBlend,
     shapeShift,
+    musicDrive,
+    frequencyMotion,
     pulseEnvelope,
     symmetry: state.symmetry,
   };
