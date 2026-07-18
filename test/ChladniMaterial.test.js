@@ -9,6 +9,8 @@ test('renders resonance density as a smooth liquid surface on black', () => {
   assert.match(shader, /uniform vec2 uSandTexel/);
   assert.match(shader, /persistentDensity = \(/);
   assert.match(shader, /persistentInfluence = uSandReady \* mix/);
+  assert.match(shader, /degeneracyAngle = 0\.18 \+ seed \* 0\.48/);
+  assert.doesNotMatch(shader, /cos\(n \* x\) \* cos\(m \* y\) - cos\(m \* x\) \* cos\(n \* y\)/);
   assert.match(shader, /primaryModeMix/);
   assert.match(shader, /nodalDistance = mix\(primaryDistance, secondaryDistance/);
   assert.match(shader, /vec3 color = vec3\(0\.0\)/);

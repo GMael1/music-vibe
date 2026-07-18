@@ -88,3 +88,25 @@ test('maintains continuous motion through stable sustained audio', () => {
   assert.ok(state.phase > 0.8);
   assert.ok(largestVelocityStep < 0.01);
 });
+
+test('makes a sustained frequency change visibly reshape the kaleidoscope', () => {
+  let state = createMandalaMotionState(blueprint, 220);
+  for (let frame = 0; frame < 60; frame += 1) {
+    state = updateMandalaMotion(state, features(), tempo, dynamics, 0.5, 1 / 60, blueprint, 220);
+  }
+  const before = state.frequencyShape;
+  for (let frame = 0; frame < 60; frame += 1) {
+    state = updateMandalaMotion(
+      state,
+      features({ peakHz1: 1760 }),
+      tempo,
+      dynamics,
+      0.5,
+      1 / 60,
+      blueprint,
+      220,
+    );
+  }
+
+  assert.ok(state.frequencyShape - before > 0.15);
+});

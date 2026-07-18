@@ -36,10 +36,13 @@ const SIMULATION_FRAGMENT_SHADER = `
     return mat2(c, -s, s, c);
   }
 
-  float rectangularField(vec2 p, float n, float m) {
+  float rectangularField(vec2 p, float n, float m, float seed) {
     float x = p.x * 3.14159265;
     float y = p.y * 3.14159265;
-    return cos(n * x) * cos(m * y) - cos(m * x) * cos(n * y);
+    float basisA = cos(n * x) * cos(m * y);
+    float basisB = cos(m * x) * cos(n * y);
+    float degeneracyAngle = 0.18 + seed * 0.48;
+    return basisA * cos(degeneracyAngle) - basisB * sin(degeneracyAngle);
   }
 
   float radialField(vec2 p, float n, float m, float seed) {
@@ -78,7 +81,7 @@ const SIMULATION_FRAGMENT_SHADER = `
 
   float resonanceField(vec2 p, float family, float n, float m, float rotation, float seed) {
     vec2 q = rotate2d(rotation) * p;
-    if (family < 0.5) return rectangularField(q, n, m);
+    if (family < 0.5) return rectangularField(q, n, m, seed);
     if (family < 1.5) return radialField(q, n, m, seed);
     if (family < 2.5) return diagonalField(q, n, m, seed);
     if (family < 3.5) return coupledField(q, n, m, seed);

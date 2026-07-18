@@ -62,9 +62,9 @@ export function updateMandalaMotion(
     state.frequencyShape,
     frequencyTarget,
     dt,
-    0.24 + journeyFlow * 0.38,
+    0.72 + journeyFlow * 0.86,
   );
-  const formBlend = damp(state.formBlend, formTarget, dt, 0.3 + energy * 0.42);
+  const formBlend = damp(state.formBlend, formTarget, dt, 0.68 + energy * 0.9);
   const velocity = damp(
     state.velocity,
     velocityTarget,

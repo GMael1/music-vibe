@@ -84,10 +84,25 @@ export function getLivingMandalaMaterial() {
         return value;
       }
 
-      vec2 mandalaDomain(vec2 p, float segments) {
+      vec2 kaleidoscopeFold(vec2 p, float segments, float rotation) {
         float radius = length(p);
-        float angle = atan(p.y, p.x);
-        return vec2(cos(angle * segments), sin(angle * segments)) * radius;
+        float wedge = TAU / segments;
+        float angle = mod(atan(p.y, p.x) + rotation + wedge * 0.5, wedge) - wedge * 0.5;
+        angle = abs(angle);
+        return vec2(cos(angle), sin(angle)) * radius;
+      }
+
+      float motifDistance(vec2 p, float size, float shapeMix, float petalMix) {
+        float circle = abs(length(p) - size);
+        float diamond = abs((abs(p.x) + abs(p.y)) * 0.70710678 - size);
+        float petal = abs(length(p * vec2(0.72, 1.52)) - size);
+        return mix(mix(circle, diamond, shapeMix), petal, petalMix);
+      }
+
+      float lensDistance(vec2 p, float size, float separation) {
+        float a = length(p - vec2(separation, 0.0)) - size;
+        float b = length(p + vec2(separation, 0.0)) - size;
+        return abs(max(a, b));
       }
 
       vec3 spectralPalette(float t) {
@@ -98,105 +113,101 @@ export function getLivingMandalaMaterial() {
         vec2 screen = vUv * 2.0 - 1.0;
         vec2 p = screen;
         p.x *= uAspect;
-        p = rotate2d(uJourney * 0.08 + uMorphPhase * 0.08) * p;
+        p = rotate2d(uJourney * 0.055 + uMorphPhase * 0.19) * p;
         float radius = length(p);
-        float angle = atan(p.y, p.x);
 
         float frequencyShape = clamp(uFrequencyShape, 0.0, 1.0);
         float formBlend = clamp(uFormBlend, 0.0, 1.0);
         float segments = max(4.0, floor(uSymmetryBase + 0.5));
-        vec2 folded = mandalaDomain(p, segments);
-        float symmetry = 0.66 + uTrance * 0.2 + uTonality * 0.1 + uSpectralMid * 0.025;
-        vec2 q = mix(p, folded, symmetry);
+        vec2 q = kaleidoscopeFold(
+          p,
+          segments,
+          uMorphPhase * 0.34 + uJourney * 0.08
+        );
 
-        float tempoWave = sin(TAU * uBeatPhase);
-        float breath = sin(
-          radius * (8.0 + frequencyShape * 8.0 + uSpectralLow * 3.0)
-            - uMorphPhase * 0.9
-        ) * (0.0025 + uSpectralLow * mix(0.002, 0.007, uEnergy))
-          + tempoWave * uPulseEnvelope * 0.0035;
-        vec2 radialDirection = p / max(radius, 0.001);
-        q += radialDirection * breath;
-
-        vec2 flowDomain = q * (1.7 + frequencyShape * 0.75);
-        vec2 flow = vec2(
-          fbm(flowDomain + vec2(uMorphPhase * 0.55, uJourney * 0.8)),
-          fbm(rotate2d(0.73) * flowDomain + vec2(-uJourney * 0.7, uMorphPhase * 0.43))
+        vec2 organic = vec2(
+          fbm(q * (2.1 + frequencyShape * 0.55) + vec2(uMorphPhase * 0.16, 3.4)),
+          fbm(rotate2d(0.91) * q * 2.3 - vec2(5.2, uMorphPhase * 0.13))
         ) - 0.5;
-        float warpStrength = 0.04 + uMotionEnergy * 0.2 + uLevelSlow * 0.052
-          + uSectionIntensity * 0.028 + uSectionNovelty * 0.026;
-        q += flow * warpStrength;
-        vec2 qTwist = rotate2d(0.16 + sin(uMorphPhase * 0.18) * 0.05)
-          * q * (1.07 + formBlend * 0.12) + flow * 0.42;
+        q += organic * (0.008 + uMotionEnergy * 0.025 + uFlux * 0.018);
 
-        float cellScale = 2.65 + frequencyShape * 2.55 + formBlend * 0.72
-          + uSpectralHigh * 0.65 + uSectionNovelty * 0.38;
-        float cellA = fbm(
-          q * cellScale + flow * 1.45
-            + vec2(uMorphPhase * 0.22, -uMorphPhase * 0.14)
+        float breath = 1.0 + sin(TAU * uBeatPhase) * uPulseEnvelope * 0.025
+          + uLevelSlow * 0.035;
+        q *= breath;
+        float drift = uMorphPhase * (0.46 + uMotionEnergy * 0.34);
+        float shapeMix = smoothstep(0.18, 0.82, formBlend);
+        float petalMix = smoothstep(0.38, 0.92, uSpectralHigh * 0.68 + uSpread * 0.32);
+
+        vec2 anchorInner = vec2(
+          0.22 + frequencyShape * 0.055 + sin(drift * 0.71) * 0.018,
+          0.018 + sin(drift * 0.83 + 1.2) * 0.014
         );
-        float cellB = fbm(
-          qTwist * (cellScale * 1.08) - flow * 1.05
-            - vec2(uMorphPhase * 0.13, uMorphPhase * 0.19)
+        vec2 anchorMiddle = vec2(
+          0.51 + frequencyShape * 0.11 + sin(drift * 0.47 + 2.1) * 0.032,
+          0.075 + uSpectralMid * 0.055 + cos(drift * 0.64) * 0.022
         );
-        float cellC = fbm(
-          rotate2d(1.57) * q * (3.35 + frequencyShape * 2.0)
-            + vec2(-uMorphPhase * 0.18, uMorphPhase * 0.12)
+        vec2 anchorOuter = vec2(
+          0.84 + frequencyShape * 0.17 + cos(drift * 0.39 + 0.7) * 0.045,
+          0.13 + uSpectralHigh * 0.07 + sin(drift * 0.58 + 2.8) * 0.032
         );
-        float reaction = mix(abs(cellA - cellB), abs(cellB - cellC), formBlend);
-        float definition = 3.15 + uLevelSlow * 0.64 + uTonality * 0.92;
-        float ridge = 1.0 - abs(sin(
-          (reaction + radius * (0.17 + formBlend * 0.1) + cellC * 0.055
-            + uLevelSlow * 0.028 + uSectionIntensity * 0.016)
-            * (11.0 + frequencyShape * 9.0 + uSpectralMid * 3.5)
-            + uMorphPhase * 0.18
+
+        float innerSize = 0.075 + uSpectralLow * 0.026 + uLevelSlow * 0.012;
+        float middleSize = 0.105 - frequencyShape * 0.018 + uSpectralMid * 0.018;
+        float outerSize = 0.12 - frequencyShape * 0.028 + uSpectralHigh * 0.022;
+        float dInner = motifDistance(q - anchorInner, innerSize, shapeMix, petalMix * 0.35);
+        float dMiddle = motifDistance(
+          rotate2d(0.28 + formBlend * 0.34) * (q - anchorMiddle),
+          middleSize,
+          1.0 - shapeMix,
+          petalMix
+        );
+        float dOuter = lensDistance(
+          rotate2d(-0.22 + frequencyShape * 0.3) * (q - anchorOuter),
+          outerSize,
+          0.035 + uSpectralHigh * 0.025
+        );
+        float ringA = abs(radius - (0.36 + frequencyShape * 0.08 + sin(drift * 0.42) * 0.018));
+        float ringB = abs(radius - (0.7 + frequencyShape * 0.12 + cos(drift * 0.31) * 0.025));
+        float spoke = abs(q.y - (0.017 + uSpectralMid * 0.018) * sin(
+          q.x * (9.0 + frequencyShape * 5.0) - drift * 0.72
         ));
-        float membrane = pow(
-          smoothstep(0.18 - fwidth(ridge), 1.0, ridge),
-          definition
+        float motifDistanceField = min(min(dInner, dMiddle), dOuter);
+        float latticeDistance = min(min(ringA, ringB), spoke);
+        float lineWidth = 0.008 + uLevelSlow * 0.006 + uLight * 0.0025;
+        float aa = max(fwidth(motifDistanceField), 0.0012);
+        float motifLine = 1.0 - smoothstep(lineWidth, lineWidth + aa * 1.8, motifDistanceField);
+        float latticeLine = 1.0 - smoothstep(
+          lineWidth * 0.45,
+          lineWidth * 0.45 + fwidth(latticeDistance) * 1.8,
+          latticeDistance
         );
-        float tunnel = pow(0.5 + 0.5 * cos(
-          angle * segments
-            + radius * (8.5 + frequencyShape * 10.0 + formBlend * 3.0)
-            + (cellA - cellB) * 2.8
-            - uMorphPhase * 0.55
-        ), 5.0);
-        float radialWeave = pow(0.5 + 0.5 * cos(
-          angle * segments * 2.0
-            + radius * (7.0 + frequencyShape * 9.0)
-            + (cellC - cellA) * 3.1
-            + uMorphPhase * 0.32
-        ), 6.0);
-        float halo = pow(smoothstep(0.38, 0.9, cellC), 2.2)
-          * (0.5 + 0.5 * cos(radius * (9.0 + frequencyShape * 6.0) - uMorphPhase * 0.4));
+        float motifAura = exp(-motifDistanceField * (27.0 - uLight * 7.0));
+        float latticeAura = exp(-latticeDistance * 42.0);
+        float centerGem = exp(-length(q) * (8.5 - uSpectralLow * 2.0));
 
         vec3 earthBase = vec3(0.002, 0.003, 0.002);
-        vec3 earthGlow = mix(vec3(0.48, 0.075, 0.018), vec3(1.12, 0.38, 0.055), cellA);
-        earthGlow = mix(earthGlow, vec3(0.035, 0.72, 0.19), cellB * 0.56);
-        vec3 cosmic = spectralPalette(cellA + cellB * 0.34 + cellC * 0.12 + radius * 0.16);
+        vec3 earthGlow = mix(
+          vec3(0.54, 0.065, 0.012),
+          vec3(1.18, 0.42, 0.045),
+          clamp(q.x * 0.82 + uSpectralMid * 0.28, 0.0, 1.0)
+        );
+        earthGlow = mix(earthGlow, vec3(0.035, 0.62, 0.17), uSpectralHigh * 0.46);
+        vec3 cosmic = spectralPalette(q.x * 0.42 + q.y * 0.24 + formBlend * 0.18);
         vec3 glow = mix(earthGlow, cosmic, uCosmic);
-        float lightFloor = mix(0.24, 0.72, uLight);
-        float gate = lightFloor + uPresence * 0.1 + uLevelSlow * 0.34
-          + uSectionIntensity * 0.08 + uBeatPulse * 0.035;
+        float gate = mix(0.3, 0.78, uLight) + uPresence * 0.08 + uLevelSlow * 0.28
+          + uSectionIntensity * 0.06 + uBeatPulse * 0.025;
         vec3 color = earthBase;
-        color += glow * membrane * gate * (0.88 + uLevelSlow * 0.46 + uTrance * 0.22);
-        color += glow * pow(membrane, 0.28) * gate * (0.36 + uLevelSlow * 0.12);
-        color += mix(vec3(0.2, 0.5, 0.12), cosmic, uCosmic)
-          * tunnel * gate * mix(0.055, 0.21, formBlend) * (0.8 + uSpectralHigh * 0.42);
-        color += mix(vec3(0.62, 0.18, 0.025), cosmic, uCosmic)
-          * radialWeave * gate * mix(0.2, 0.08, formBlend)
-          * (0.76 + uTonality * 0.24 + uRelativeLevel * 0.18);
-        color += mix(vec3(0.09, 0.32, 0.08), cosmic, uCosmic)
-          * halo * gate * (0.025 + uSpectralMid * 0.085);
-        float innerPresence = exp(-radius * (2.8 + frequencyShape * 1.7));
-        color += mix(vec3(0.42, 0.12, 0.025), cosmic, uCosmic)
-          * innerPresence * membrane * (0.035 + uLevelFast * 0.11);
-        float dormantStructure = pow(max(membrane, radialWeave), 0.18);
-        color += mix(vec3(0.13, 0.035, 0.008), cosmic * 0.12, uCosmic)
-          * dormantStructure * (0.56 + uRelativeLevel * 0.48);
-        color *= mix(0.78, 1.68, uLight) + uRelativeLevel * 0.28;
+        color += glow * motifLine * gate * (1.25 + uRelativeLevel * 0.62);
+        color += glow * motifAura * gate * (0.28 + uLevelFast * 0.2);
+        color += mix(vec3(0.18, 0.48, 0.1), cosmic, uCosmic)
+          * latticeLine * gate * (0.22 + uTonality * 0.2);
+        color += mix(vec3(0.5, 0.12, 0.015), cosmic, uCosmic)
+          * latticeAura * gate * (0.065 + uSpectralMid * 0.08);
+        color += mix(vec3(0.7, 0.19, 0.025), cosmic, uCosmic)
+          * centerGem * (0.12 + uLevelSlow * 0.32 + uPulseEnvelope * 0.18);
+        color += glow * pow(motifAura, 0.32) * (0.035 + uLight * 0.045);
+        color *= mix(0.82, 1.62, uLight) + uRelativeLevel * 0.22;
         color *= smoothstep(1.45, 0.18, length(screen));
-        color += (hash21(gl_FragCoord.xy + uMorphPhase * 3.0) - 0.5) * 0.0025 * gate;
         gl_FragColor = vec4(color, uOpacity * luminousLayerCoverage(color, vUv));
       }
     `,
